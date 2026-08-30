@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>银龄药伴</title>
+<style>
+  /* ===== 全局适老化基础 ===== */
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #FFF8F0;
+    color: #333;
+    font-size: 20px;
+    line-height: 1.6;
+    min-height: 100vh;
+    padding-bottom: 20px;
+  }
+  .page { display:none; padding: 20px 16px; }
+  .page.active { display:block; }
+
+  /* ===== 顶部标题 ===== */
+  .header {
+    text-align: center;
+    padding: 24px 0 20px;
+  }
+  .header h1 {
+    font-size: 32px;
+    color: #E8652A;
+    font-weight: 700;
+  }
+  .header p {
+    font-size: 18px;
+    color: #888;
+    margin-top: 6px;
+  }
+
+  /* ===== 大按钮 ===== */
+  .btn-big {
+    display: block;
+    width: 100%;
+    padding: 28px 20px;
+    margin-bottom: 16px;
+    border: none;
+    border-radius: 16px;
+    font-size: 26px;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    text-align: left;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    transition: transform 0.1s;
+  }
+  .btn-big:active { transform: scale(0.97); }
+  .btn-big .sub {
+    display: block;
+    font-size: 18px;
+    font-weight: 400;
+    margin-top: 6px;
+    opacity: 0.9;
+  }
+  .btn-orange { background: linear-gradient(135deg, #FF8C42, #E8652A); }
+  .btn-green  { background: linear-gradient(135deg, #52C41A, #389E0D); }
+  .btn-blue   { background: linear-gradient(135deg, #40A9FF, #1890FF); }
+  .btn-purple { background: linear-gradient(135deg, #9254DE, #722ED1); }
+
+  /* ===== 次级按钮 ===== */
+  .btn {
+    display: inline-block;
+    padding: 14px 28px;
+    border: none;
+    border-radius: 12px;
+    font-size: 22px;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 6px;
+  }
+  .btn-primary { background: #E8652A; color: #fff; }
+  .btn-secondary { background: #f0f0f0; color: #333; }
+  .btn-danger { background: #ff4d4f; color: #fff; }
+  .btn-success { background: #52C41A; color: #fff; }
+
+  /* ===== 今日概览卡片 ===== */
+  .today-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .today-card h2 {
+    font-size: 24px;
+    margin-bottom: 12px;
+    color: #333;
+  }
+  .today-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 22px;
+  }
+  .today-item:last-child { border-bottom: none; }
+  .today-item.done { color: #aaa; text-decoration: line-through; }
+  .today-item .time { font-weight: 700; color: #E8652A; }
+  .today-item.done .time { color: #aaa; }
+  .today-item .status {
+    font-size: 18px;
+    padding: 4px 12px;
+    border-radius: 8px;
+  }
+  .status-pending { background: #FFF2E8; color: #E8652A; }
+  .status-done { background: #f6ffed; color: #52C41A; }
+  .empty-tip {
+    text-align: center;
+    color: #999;
+    font-size: 20px;
+    padding: 30px 0;
+  }
+
+  /* ===== 表单 ===== */
+  .form-group {
+    margin-bottom: 20px;
+  }
+  .form-group label {
+    display: block;
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #333;
+  }
+  .form-group input, .form-group select {
+    width: 100%;
+    padding: 16px;
+    font-size: 22px;
+    border: 2px solid #ddd;
+    border-radius: 12px;
+    background: #fff;
+  }
+  .form-group input:focus, .form-group select:focus {
+    border-color: #E8652A;
+    outline: none;
+  }
+  .time-row {
+    display: flex;
+    gap: 10px;
+  }
+  .time-row input { flex: 1; }
+
+  /* ===== 拍照区域 ===== */
+  .scan-area {
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .scan-area img {
+    max-width: 100%;
+    border-radius: 12px;
+    margin-bottom: 12px;
+  }
+  .scan-placeholder {
+    border: 3px dashed #ddd;
+    border-radius: 12px;
+    padding: 50px 20px;
+    color: #999;
+    font-size: 22px;
+  }
+  #fileInput { display: none; }
+
+  /* ===== 识药结果 ===== */
+  .result-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px;
+    margin-top: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .result-card h3 {
+    font-size: 26px;
+    color: #E8652A;
+    margin-bottom: 12px;
+  }
+  .result-card .result-row {
+    padding: 10px 0;
+    border-bottom: 1px solid #f5f5f5;
+    font-size: 21px;
+  }
+  .result-card .result-row:last-child { border-bottom: none; }
+  .result-card .result-label {
+    font-weight: 700;
+    color: #333;
+    margin-right: 8px;
+  }
+  .warn-box {
+    background: #FFF2E8;
+    border-left: 5px solid #E8652A;
+    padding: 14px 16px;
+    border-radius: 8px;
+    margin-top: 12px;
+    font-size: 20px;
+  }
+
+  /* ===== 计划列表 ===== */
+  .plan-item {
+    background: #fff;
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .plan-item.done { opacity: 0.6; }
+  .plan-info .med-name {
+    font-size: 24px;
+    font-weight: 700;
+    color: #333;
+  }
+  .plan-info .med-detail {
+    font-size: 19px;
+    color: #888;
+    margin-top: 4px;
+  }
+  .plan-info .med-time {
+    font-size: 22px;
+    font-weight: 700;
+    color: #E8652A;
+    margin-top: 4px;
+  }
+  .plan-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .plan-actions .btn {
+    padding: 10px 16px;
+    font-size: 18px;
+    margin: 0;
+  }
+
+  /* ===== 提醒弹窗 ===== */
+  .reminder-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 999;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+  }
+  .reminder-overlay.show { display: flex; }
+  .reminder-box {
+    background: #fff;
+    border-radius: 20px;
+    padding: 30px 24px;
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+  }
+  .reminder-box .bell {
+    font-size: 60px;
+    margin-bottom: 10px;
+  }
+  .reminder-box h2 {
+    font-size: 30px;
+    color: #E8652A;
+    margin-bottom: 8px;
+  }
+  .reminder-box .med-name {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 16px 0;
+    color: #333;
+  }
+  .reminder-box .med-dose {
+    font-size: 22px;
+    color: #666;
+    margin-bottom: 24px;
+  }
+  .reminder-box .btn-big {
+    text-align: center;
+    padding: 24px;
+  }
+
+  /* ===== 返回栏 ===== */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    padding: 16px 0;
+    margin-bottom: 10px;
+  }
+  .top-bar .back-btn {
+    font-size: 22px;
+    color: #E8652A;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .top-bar .title {
+    flex: 1;
+    text-align: center;
+    font-size: 26px;
+    font-weight: 700;
+    color: #333;
+    margin-right: 50px;
+  }
+
+  /* ===== 加载提示 ===== */
+  .loading {
+    text-align: center;
+    padding: 30px;
+    font-size: 22px;
+    color: #888;
+  }
+  .loading .spin {
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+    border: 4px solid #f0f0f0;
+    border-top-color: #E8652A;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== 语音按钮 ===== */
+  .voice-btn {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: #E8652A;
+    color: #fff;
+    border: none;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    margin: 10px auto;
+    display: block;
+  }
+  .voice-btn.recording {
+    background: #ff4d4f;
+    animation: pulse 1s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+  }
+  .voice-tip {
+    text-align: center;
+    font-size: 18px;
+    color: #888;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 首页 ============ -->
+<div id="page-home" class="page active">
+  <div class="header">
+    <h1>银龄药伴</h1>
+    <p>您的贴心用药助手</p>
+  </div>
+
+  <div class="today-card">
+    <h2>今日服药</h2>
+    <div id="todayList"></div>
+  </div>
+
+  <button class="btn-big btn-orange" onclick="showPage('scan')">
+    拍药识药
+    <span class="sub">拍药盒，告诉您怎么吃</span>
+  </button>
+  <button class="btn-big btn-green" onclick="showPage('add')">
+    设提醒
+    <span class="sub">添加服药时间提醒</span>
+  </button>
+  <button class="btn-big btn-blue" onclick="showPage('plan')">
+    服药计划
+    <span class="sub">查看和管理所有提醒</span>
+  </button>
+</div>
+
+<!-- ============ 拍药识药 ============ -->
+<div id="page-scan" class="page">
+  <div class="top-bar">
+    <button class="back-btn" onclick="showPage('home')">← 返回</button>
+    <span class="title">拍药识药</span>
+  </div>
+
+  <div class="scan-area">
+    <div id="scanPlaceholder" class="scan-placeholder">
+      点击下方按钮<br>拍摄或上传药盒照片
+    </div>
+    <img id="scanPreview" style="display:none;" alt="药盒照片">
+  </div>
+
+  <input type="file" id="fileInput" accept="image/*" capture="environment" onchange="handleScan(event)">
+  <button class="btn-big btn-orange" onclick="document.getElementById('fileInput').click()">
+    拍照 / 选图
+  </button>
+
+  <div id="scanResult"></div>
+</div>
+
+<!-- ============ 设提醒 ============ -->
+<div id="page-add" class="page">
+  <div class="top-bar">
+    <button class="back-btn" onclick="showPage('home')">← 返回</button>
+    <span class="title">设提醒</span>
+  </div>
+
+  <div class="form-group">
+    <label>药品名称</label>
+    <input type="text" id="medName" placeholder="例如：阿司匹林">
+  </div>
+
+  <div class="form-group">
+    <label>服用剂量</label>
+    <input type="text" id="medDose" placeholder="例如：1片 / 10毫升">
+  </div>
+
+  <div class="form-group">
+    <label>服用时间</label>
+    <div class="time-row">
+      <input type="time" id="medTime" value="08:00">
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>服用说明（可选）</label>
+    <input type="text" id="medNote" placeholder="例如：饭后服用">
+  </div>
+
+  <button class="btn-big btn-green" onclick="savePlan()">
+    保存提醒
+  </button>
+
+  <div style="margin-top:20px; text-align:center;">
+    <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">按住<br>说话</button>
+    <p class="voice-tip">按住说话，自动填写药品信息</p>
+    <p id="voiceResult" style="font-size:19px; color:#E8652A; margin-top:10px;"></p>
+  </div>
+</div>
+
+<!-- ============ 服药计划 ============ -->
+<div id="page-plan" class="page">
+  <div class="top-bar">
+    <button class="back-btn" onclick="showPage('home')">← 返回</button>
+    <span class="title">服药计划</span>
+  </div>
+  <div id="planList"></div>
+</div>
+
+<!-- ============ 服药提醒弹窗 ============ -->
+<div id="reminderOverlay" class="reminder-overlay">
+  <div class="reminder-box">
+    <div class="bell">⏰</div>
+    <h2>该吃药啦</h2>
+    <div class="med-name" id="reminderName"></div>
+    <div class="med-dose" id="reminderDose"></div>
+    <button class="btn-big btn-success" onclick="confirmTaken()">
+      我已服用
+    </button>
+    <button class="btn btn-secondary" onclick="snoozeReminder()" style="margin-top:12px;">
+      10分钟后再提醒
+    </button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  数据层：本地存储
+// ============================================================
+const STORAGE_KEY = 'yinling_plans';
+
+function loadPlans() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch(e) {
+    return [];
+  }
+}
+
+function savePlans(plans) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(plans));
+}
+
+// ============================================================
+//  页面切换
+// ============================================================
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  if (name === 'home') renderToday();
+  if (name === 'plan') renderPlanList();
+  window.scrollTo(0, 0);
+}
+
+// ============================================================
+//  首页：今日服药概览
+// ============================================================
+function renderToday() {
+  const plans = loadPlans();
+  const today = new Date().toDateString();
+  const list = document.getElementById('todayList');
+
+  const todayPlans = plans
+    .filter(p => p.time)
+    .sort((a, b) => a.time.localeCompare(b.time));
+
+  if (todayPlans.length === 0) {
+    list.innerHTML = '<div class="empty-tip">还没有服药计划<br>点击下方"设提醒"添加</div>';
+    return;
+  }
+
+  list.innerHTML = todayPlans.map(p => {
+    const taken = p.takenDates && p.takenDates.includes(today);
+    return `<div class="today-item ${taken ? 'done' : ''}">
+      <span class="time">${p.time}</span>
+      <span>${p.name} ${p.dose || ''}</span>
+      <span class="status ${taken ? 'status-done' : 'status-pending'}">${taken ? '已吃' : '待吃'}</span>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+//  设提醒：保存计划
+// ============================================================
+function savePlan() {
+  const name = document.getElementById('medName').value.trim();
+  const dose = document.getElementById('medDose').value.trim();
+  const time = document.getElementById('medTime').value;
+  const note = document.getElementById('medNote').value.trim();
+
+  if (!name) { alert('请填写药品名称'); return; }
+  if (!time) { alert('请选择服用时间'); return; }
+
+  const plans = loadPlans();
+  plans.push({
+    id: Date.now(),
+    name, dose, time, note,
+    takenDates: [],
+    createdAt: new Date().toISOString()
+  });
+  savePlans(plans);
+
+  // 清空表单
+  document.getElementById('medName').value = '';
+  document.getElementById('medDose').value = '';
+  document.getElementById('medNote').value = '';
+
+  speak('提醒已设置，' + name + '，' + time + '服用');
+  alert('保存成功！');
+  showPage('home');
+}
+
+// ============================================================
+//  服药计划列表
+// ============================================================
+function renderPlanList() {
+  const plans = loadPlans().sort((a, b) => a.time.localeCompare(b.time));
+  const list = document.getElementById('planList');
+
+  if (plans.length === 0) {
+    list.innerHTML = '<div class="empty-tip">还没有服药计划</div>';
+    return;
+  }
+
+  const today = new Date().toDateString();
+  list.innerHTML = plans.map(p => {
+    const taken = p.takenDates && p.takenDates.includes(today);
+    return `<div class="plan-item ${taken ? 'done' : ''}">
+      <div class="plan-info">
+        <div class="med-name">${p.name}</div>
+        <div class="med-detail">${p.dose || '剂量未设'} ${p.note ? '· ' + p.note : ''}</div>
+        <div class="med-time">每天 ${p.time}</div>
+      </div>
+      <div class="plan-actions">
+        ${taken
+          ? '<button class="btn btn-secondary" onclick="markTaken(' + p.id + ', false)">撤销</button>'
+          : '<button class="btn btn-success" onclick="markTaken(' + p.id + ')">已吃</button>'}
+        <button class="btn btn-danger" onclick="deletePlan(${p.id})">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function markTaken(id, taken = true) {
+  const plans = loadPlans();
+  const p = plans.find(x => x.id === id);
+  if (!p) return;
+  const today = new Date().toDateString();
+  p.takenDates = p.takenDates || [];
+  if (taken) {
+    if (!p.takenDates.includes(today)) p.takenDates.push(today);
+  } else {
+    p.takenDates = p.takenDates.filter(d => d !== today);
+  }
+  savePlans(plans);
+  renderPlanList();
+}
+
+function deletePlan(id) {
+  if (!confirm('确定删除这个提醒吗？')) return;
+  savePlans(loadPlans().filter(p => p.id !== id));
+  renderPlanList();
+}
+
+// ============================================================
+//  拍药识药（演示模式：模拟AI识别结果）
+// ============================================================
+function handleScan(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const preview = document.getElementById('scanPreview');
+  const placeholder = document.getElementById('scanPlaceholder');
+  const resultDiv = document.getElementById('scanResult');
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    placeholder.style.display = 'none';
+    resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在识别药品...</div>';
+
+    // 模拟AI识别（1.5秒后返回结果）
+    setTimeout(() => {
+      showMockResult();
+    }, 1500);
+  };
+  reader.readAsDataURL(file);
+}
+
+// 模拟药品库 —— 实际使用时替换为真实AI接口
+const MOCK_MEDS = [
+  {
+    name: '阿司匹林肠溶片',
+    dose: '100mg',
+    usage: '口服，每天1次，每次1片',
+    timing: '建议饭后服用，减少胃部刺激',
+    caution: '常见不良反应为胃肠道不适；有出血倾向者慎用；服药期间避免饮酒。',
+    interaction: '与其他抗凝药同服可能增加出血风险，请咨询医生。'
+  },
+  {
+    name: '氨氯地平片',
+    dose: '5mg',
+    usage: '口服，每天1次，每次1片',
+    timing: '每天固定时间服用，饭前饭后均可',
+    caution: '可能引起脚踝水肿、面部潮红；如出现明显不适请及时就医。',
+    interaction: '与葡萄柚汁同服可能影响药效，服药期间避免大量饮用葡萄柚汁。'
+  },
+  {
+    name: '二甲双胍片',
+    dose: '0.5g',
+    usage: '口服，每天2-3次，每次1片',
+    timing: '随餐服用或餐后立即服用，减少胃肠道反应',
+    caution: '常见不良反应为腹泻、恶心；定期监测血糖和肾功能；避免过量饮酒。',
+    interaction: '做造影检查前需提前停药，请告知医生您正在服用此药。'
+  },
+  {
+    name: '阿托伐他汀钙片',
+    dose: '20mg',
+    usage: '口服，每天1次，每次1片',
+    timing: '建议睡前服用，效果更佳',
+    caution: '可能引起肌肉酸痛；定期复查肝功能；如出现不明原因肌肉疼痛请及时就医。',
+    interaction: '避免与葡萄柚汁同服；与某些抗生素、抗真菌药同服需咨询医生。'
+  }
+];
+
+function showMockResult() {
+  // 随机选一个模拟结果，实际使用时调用真实AI接口
+  const med = MOCK_MEDS[Math.floor(Math.random() * MOCK_MEDS.length)];
+  const resultDiv = document.getElementById('scanResult');
+
+  resultDiv.innerHTML = `
+    <div class="result-card">
+      <h3>${med.name}</h3>
+      <div class="result-row"><span class="result-label">规格：</span>${med.dose}</div>
+      <div class="result-row"><span class="result-label">怎么吃：</span>${med.usage}</div>
+      <div class="result-row"><span class="result-label">什么时候吃：</span>${med.timing}</div>
+      <div class="warn-box">
+        <strong>注意事项：</strong><br>${med.caution}
+      </div>
+      <div class="warn-box" style="margin-top:10px; background:#f0f5ff; border-left-color:#1890ff;">
+        <strong>联用提醒：</strong><br>${med.interaction}
+      </div>
+      <div style="text-align:center; margin-top:16px;">
+        <button class="btn btn-primary" onclick="quickAddPlan('${med.name}','${med.dose}')">
+          一键设为提醒
+        </button>
+      </div>
+    </div>
+  `;
+
+  speak('识别完成。' + med.name + '，' + med.usage + '。' + med.caution);
+}
+
+// 识药结果一键添加为提醒
+function quickAddPlan(name, dose) {
+  document.getElementById('medName').value = name;
+  document.getElementById('medDose').value = dose;
+  showPage('add');
+}
+
+// ============================================================
+//  到点提醒：定时检查
+// ============================================================
+let currentReminderId = null;
+let snoozeTimers = {};
+
+function checkReminders() {
+  const now = new Date();
+  const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+  const today = now.toDateString();
+  const plans = loadPlans();
+
+  for (const p of plans) {
+    if (p.time === currentTime) {
+      const alreadyTaken = p.takenDates && p.takenDates.includes(today);
+      const alreadyReminded = p.lastReminded === today;
+      if (!alreadyTaken && !alreadyReminded) {
+        p.lastReminded = today;
+        savePlans(plans);
+        showReminder(p);
+        return;
+      }
+    }
+  }
+}
+
+function showReminder(plan) {
+  currentReminderId = plan.id;
+  document.getElementById('reminderName').textContent = plan.name;
+  document.getElementById('reminderDose').textContent = (plan.dose || '请按医嘱服用') + (plan.note ? '（' + plan.note + '）' : '');
+  document.getElementById('reminderOverlay').classList.add('show');
+  speak('该吃药了。' + plan.name + '，' + (plan.dose || ''));
+}
+
+function confirmTaken() {
+  if (currentReminderId) {
+    markTaken(currentReminderId, true);
+  }
+  document.getElementById('reminderOverlay').classList.remove('show');
+  currentReminderId = null;
+  renderToday();
+}
+
+function snoozeReminder() {
+  document.getElementById('reminderOverlay').classList.remove('show');
+  if (currentReminderId) {
+    const id = currentReminderId;
+    setTimeout(() => {
+      const plans = loadPlans();
+      const p = plans.find(x => x.id === id);
+      if (p) {
+        const today = new Date().toDateString();
+        if (!p.takenDates || !p.takenDates.includes(today)) {
+          showReminder(p);
+        }
+      }
+    }, 10 * 60 * 1000); // 10分钟
+  }
+  currentReminderId = null;
+}
+
+// 每30秒检查一次是否到点
+setInterval(checkReminders, 30000);
+
+// ============================================================
+//  语音播报
+// ============================================================
+function speak(text) {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'zh-CN';
+    utter.rate = 0.9;
+    utter.volume = 1;
+    window.speechSynthesis.speak(utter);
+  }
+}
+
+// ============================================================
+//  语音输入（可选，浏览器支持时可用）
+// ============================================================
+let recognition = null;
+let isRecording = false;
+
+function toggleVoice() {
+  const btn = document.getElementById('voiceBtn');
+  const resultEl = document.getElementById('voiceResult');
+
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    alert('您的浏览器不支持语音识别，请手动填写');
+    return;
+  }
+
+  if (isRecording) {
+    if (recognition) recognition.stop();
+    btn.classList.remove('recording');
+    btn.innerHTML = '按住<br>说话';
+    isRecording = false;
+    return;
+  }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'zh-CN';
+  recognition.interimResults = false;
+
+  recognition.onstart = function() {
+    isRecording = true;
+    btn.classList.add('recording');
+    btn.innerHTML = '正在<br>听...';
+    resultEl.textContent = '请说话...';
+  };
+
+  recognition.onresult = function(event) {
+    const text = event.results[0][0].transcript;
+    resultEl.textContent = '您说：' + text;
+    // 简单解析：尝试提取药名和时间
+    parseVoiceCommand(text);
+  };
+
+  recognition.onerror = function() {
+    resultEl.textContent = '没听清，请再试一次';
+    btn.classList.remove('recording');
+    btn.innerHTML = '按住<br>说话';
+    isRecording = false;
+  };
+
+  recognition.onend = function() {
+    btn.classList.remove('recording');
+    btn.innerHTML = '按住<br>说话';
+    isRecording = false;
+  };
+
+  recognition.start();
+}
+
+// 简单语音指令解析（演示版，实际可用AI增强）
+function parseVoiceCommand(text) {
+  // 提取时间
+  const timeMatch = text.match(/(\d{1,2})[点时:：](\d{1,2})?/);
+  if (timeMatch) {
+    const h = timeMatch[1].padStart(2, '0');
+    const m = (timeMatch[2] || '0').padStart(2, '0');
+    document.getElementById('medTime').value = h + ':' + m;
+  }
+  // 提取剂量
+  const doseMatch = text.match(/(\d+)\s*(片|粒|毫升|ml|mg|克)/);
+  if (doseMatch) {
+    document.getElementById('medDose').value = doseMatch[1] + doseMatch[2];
+  }
+  // 药名：去掉时间和剂量后的剩余部分作为药名（简化处理）
+  let name = text
+    .replace(/每天|早上|晚上|中午|服用|吃|喝|提醒我|帮我设?置?/g, '')
+    .replace(/\d{1,2}[点时:：]\d{0,2}/g, '')
+    .replace(/\d+\s*(片|粒|毫升|ml|mg|克)/g, '')
+    .trim();
+  if (name) {
+    document.getElementById('medName').value = name;
+  }
+}
+
+// ============================================================
+//  初始化
+// ============================================================
+renderToday();
+</script>
+
+</body>
+</html>

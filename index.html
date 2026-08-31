@@ -477,15 +477,15 @@
     <span class="title">联用禁忌</span>
   </div>
   <div class="form-group">
-    <label>输入药品名称（多种药用逗号分隔）</label>
-    <textarea id="interactionInput" rows="3" style="width:100%; padding:16px; font-size:22px; border:2px solid #ddd; border-radius:12px; resize:vertical; font-family:inherit;" placeholder="例如：阿司匹林，布洛芬，二甲双胍"></textarea>
+    <label>输入药品名称或直接提问</label>
+    <textarea id="interactionInput" rows="3" style="width:100%; padding:16px; font-size:22px; border:2px solid #ddd; border-radius:12px; resize:vertical; font-family:inherit;" placeholder="例如：阿司匹林和布洛芬能一起吃吗"></textarea>
   </div>
   <button class="btn-big btn-blue" onclick="checkInteraction()">
     检查联用禁忌
   </button>
   <div style="margin-top:16px; text-align:center;">
     <button class="voice-btn" id="interactionVoiceBtn">按住<br>说话</button>
-    <p class="voice-tip">按住说话，输入药品名称</p>
+    <p class="voice-tip">按住说话，直接问就行</p>
     <p id="interactionVoiceResult" style="font-size:19px; color:#E8652A; margin-top:10px;"></p>
   </div>
   <div id="interactionResult"></div>
@@ -785,7 +785,7 @@ async function checkInteraction() {
   const resultDiv = document.getElementById('interactionResult');
   if (!input) { alert('请输入药品名称'); return; }
   resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在分析联用禁忌，请稍候...</div>';
-  const prompt = '请分析以下药物之间的联用禁忌和相互作用。\n药物列表：' + input + '\n\n请以严格JSON格式返回：\n{\n  "hasConflict": true或false,\n  "conflicts": [\n    {"pair": "药A+药B", "risk": "高/中/低", "description": "冲突原因和后果"}\n  ],\n  "warnings": "通用注意事项",\n  "suggestion": "给用户的建议"\n}\n\n要求：\n1. 只返回JSON，不要其他文字\n2. 基于医学常识，客观准确\n3. 语言通俗易懂，适合老年人\n4. 没有冲突时hasConflict为false，conflicts为空数组';
+  const prompt = '用户输入可能是药品列表，也可能是自然语言提问（如：阿司匹林和布洛芬可以一起吃吗）。\n用户输入：' + input + '\n\n请先从用户输入中提取所有药品名称，然后分析这些药物之间的联用禁忌和相互作用。\n（注：药品名称可能用逗号、空格、顿号、和、与或连续书写分隔，请自行识别）\n\n请以严格JSON格式返回：\n{\n  "hasConflict": true或false,\n  "conflicts": [\n    {"pair": "药A+药B", "risk": "高/中/低", "description": "冲突原因和后果"}\n  ],\n  "warnings": "通用注意事项",\n  "suggestion": "给用户的建议"\n}\n\n要求：\n1. 只返回JSON，不要其他文字\n2. 基于医学常识，客观准确\n3. 语言通俗易懂，适合老年人\n4. 没有冲突时hasConflict为false，conflicts为空数组';
   try {
     const res = await fetch(AI_CONFIG.API_URL, {
       method: 'POST',

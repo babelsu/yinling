@@ -98,7 +98,7 @@
   }
   .today-item:last-child { border-bottom: none; }
   .today-item.done { color: #aaa; text-decoration: line-through; }
-  .today-item .time { font-weight: 700; color: #E8652A; }
+  .today-item .time { font-weight: 700; color: #E8652A; margin-right: 16px; flex-shrink: 0; }
   .today-item.done .time { color: #aaa; }
   .today-item .status {
     font-size: 18px;
@@ -135,6 +135,21 @@
     font-weight: 600;
   }
   .delete-btn:active { background: #ffccc7; }
+  /* 今日服药：药品名和剂量两行显示 */
+  .today-item { align-items: center; }
+  .today-med-text {
+    flex: 1;
+    font-size: 22px;
+    font-weight: 600;
+    color: #333;
+  }
+  .today-dose-small {
+    font-size: 18px;
+    color: #888;
+    font-weight: 400;
+    margin-left: 6px;
+  }
+  .today-item.done .today-med-text { color: #aaa; }
   .empty-tip {
     text-align: center;
     color: #999;
@@ -399,9 +414,9 @@
     设提醒
     <span class="sub">添加服药时间提醒</span>
   </button>
-  <button class="btn-big btn-blue" onclick="showPage('plan')">
-    服药计划
-    <span class="sub">查看和管理所有提醒</span>
+  <button class="btn-big btn-blue" onclick="showPage('interaction')">
+    联用禁忌
+    <span class="sub">多种药一起吃，查有没有冲突</span>
   </button>
 </div>
 <!-- ============ 拍药识药 ============ -->
@@ -455,13 +470,25 @@
     <p id="voiceResult" style="font-size:19px; color:#E8652A; margin-top:10px;"></p>
   </div>
 </div>
-<!-- ============ 服药计划 ============ -->
-<div id="page-plan" class="page">
+<!-- ============ 联用禁忌 ============ -->
+<div id="page-interaction" class="page">
   <div class="top-bar">
     <button class="back-btn" onclick="showPage('home')">← 返回</button>
-    <span class="title">服药计划</span>
+    <span class="title">联用禁忌</span>
   </div>
-  <div id="planList"></div>
+  <div class="form-group">
+    <label>输入药品名称（多种药用逗号分隔）</label>
+    <textarea id="interactionInput" rows="3" style="width:100%; padding:16px; font-size:22px; border:2px solid #ddd; border-radius:12px; resize:vertical; font-family:inherit;" placeholder="例如：阿司匹林，布洛芬，二甲双胍"></textarea>
+  </div>
+  <button class="btn-big btn-blue" onclick="checkInteraction()">
+    检查联用禁忌
+  </button>
+  <div style="margin-top:16px; text-align:center;">
+    <button class="voice-btn" id="interactionVoiceBtn">按住<br>说话</button>
+    <p class="voice-tip">按住说话，输入药品名称</p>
+    <p id="interactionVoiceResult" style="font-size:19px; color:#E8652A; margin-top:10px;"></p>
+  </div>
+  <div id="interactionResult"></div>
 </div>
 <!-- ============ 服药提醒弹窗 ============ -->
 <div id="reminderOverlay" class="reminder-overlay">
@@ -531,7 +558,7 @@ function renderToday() {
     const taken = p.takenDates && p.takenDates.includes(today);
     return `<div class="today-item ${taken ? 'done' : ''}">
       <span class="time">${p.time}</span>
-      <span style="flex:1;">${p.name} ${p.dose || ''}</span>
+      <span class="today-med-text">${p.name}<span class="today-dose-small">${p.dose || ''}</span></span>
       <div class="today-actions">
         <button class="status-btn ${taken ? 'status-done' : 'status-pending'}" onclick="markTaken(${p.id}, ${taken ? 'false' : 'true'})">${taken ? '已吃' : '待吃'}</button>
         <button class="delete-btn" onclick="deletePlan(${p.id})">删除</button>
@@ -748,6 +775,128 @@ function quickAddPlanFromResult() {
     document.getElementById('medNote').value = lastRecognizedMed.timing;
   }
   showPage('add');
+}
+
+// ============================================================
+//  联用禁忌检查
+// ============================================================
+async function checkInteraction() {
+  const input = document.getElementById('interactionInput').value.trim();
+  const resultDiv = document.getElementById('interactionResult');
+  if (!input) { alert('请输入药品名称'); return; }
+  resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在分析联用禁忌，请稍候...</div>';
+  const prompt = '请分析以下药物之间的联用禁忌和相互作用。\n药物列表：' + input + '\n\n请以严格JSON格式返回：\n{\n  "hasConflict": true或false,\n  "conflicts": [\n    {"pair": "药A+药B", "risk": "高/中/低", "description": "冲突原因和后果"}\n  ],\n  "warnings": "通用注意事项",\n  "suggestion": "给用户的建议"\n}\n\n要求：\n1. 只返回JSON，不要其他文字\n2. 基于医学常识，客观准确\n3. 语言通俗易懂，适合老年人\n4. 没有冲突时hasConflict为false，conflicts为空数组';
+  try {
+    const res = await fetch(AI_CONFIG.API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + AI_CONFIG.API_KEY },
+      body: JSON.stringify({
+        model: AI_CONFIG.MODEL_LIST[0],
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1000,
+        temperature: 0.3
+      })
+    });
+    if (!res.ok) throw new Error('API错误 ' + res.status);
+    const data = await res.json();
+    const content = data.choices[0].message.content;
+    let result;
+    try { result = JSON.parse(content); } catch(e) {
+      const m = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (m) { try { result = JSON.parse(m[1]); } catch(e2) {} }
+      if (!result) {
+        const f = content.indexOf('{'), l = content.lastIndexOf('}');
+        if (f !== -1 && l !== -1) { try { result = JSON.parse(content.substring(f, l+1)); } catch(e3) {} }
+      }
+    }
+    if (!result) throw new Error('解析失败');
+    let html = '<div class="result-card">';
+    if (result.hasConflict && result.conflicts && result.conflicts.length > 0) {
+      html += '<h3 style="color:#ff4d4f;">⚠️ 发现联用禁忌</h3>';
+      for (const c of result.conflicts) {
+        const riskColor = c.risk === '高' ? '#ff4d4f' : (c.risk === '中' ? '#fa8c16' : '#faad14');
+        html += '<div class="warn-box" style="margin-top:10px; border-left-color:' + riskColor + ';">';
+        html += '<strong>' + c.pair + '</strong>（风险：' + c.risk + '）<br>' + c.description;
+        html += '</div>';
+      }
+    } else {
+      html += '<h3 style="color:#52C41A;">✅ 未发现明显联用禁忌</h3>';
+      html += '<div class="result-row">这些药物之间没有已知的严重相互作用，但仍建议遵医嘱服用。</div>';
+    }
+    if (result.warnings) {
+      html += '<div class="warn-box" style="margin-top:12px; background:#f0f5ff; border-left-color:#1890ff;"><strong>注意事项：</strong><br>' + result.warnings + '</div>';
+    }
+    if (result.suggestion) {
+      html += '<div class="result-row"><span class="result-label">建议：</span>' + result.suggestion + '</div>';
+    }
+    html += '</div>';
+    resultDiv.innerHTML = html;
+    speak('联用禁忌分析完成。' + (result.hasConflict ? '发现联用禁忌，请注意查看。' : '未发现明显联用禁忌。'));
+  } catch (e) {
+    resultDiv.innerHTML = '<div class="warn-box">分析失败：' + e.message + '<br><br>请检查网络是否正常。</div>';
+  }
+}
+
+// ============================================================
+//  联用禁忌：语音输入
+// ============================================================
+let interactionRecognition = null;
+let interactionRecording = false;
+(function initInteractionVoice() {
+  const btn = document.getElementById('interactionVoiceBtn');
+  if (!btn) return;
+  btn.addEventListener('mousedown', function(e) { e.preventDefault(); startInteractionVoice(); });
+  btn.addEventListener('touchstart', function(e) { e.preventDefault(); startInteractionVoice(); }, { passive: false });
+  btn.addEventListener('mouseup', function(e) { e.preventDefault(); stopInteractionVoice(); });
+  btn.addEventListener('mouseleave', stopInteractionVoice);
+  btn.addEventListener('touchend', function(e) { e.preventDefault(); stopInteractionVoice(); }, { passive: false });
+  btn.addEventListener('touchcancel', stopInteractionVoice);
+})();
+function startInteractionVoice() {
+  const btn = document.getElementById('interactionVoiceBtn');
+  const resultEl = document.getElementById('interactionVoiceResult');
+  if (interactionRecording) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { resultEl.textContent = '当前浏览器不支持语音识别，请用Chrome或Safari'; return; }
+  try { interactionRecognition = new SR(); } catch(e) { return; }
+  interactionRecognition.lang = 'zh-CN';
+  interactionRecognition.interimResults = true;
+  interactionRecognition.continuous = false;
+  interactionRecognition.onstart = function() {
+    interactionRecording = true;
+    btn.classList.add('recording');
+    btn.innerHTML = '正在<br>听...';
+    resultEl.textContent = '请说话...';
+  };
+  interactionRecognition.onresult = function(event) {
+    let text = '';
+    for (let i = 0; i < event.results.length; i++) { text += event.results[i][0].transcript; }
+    text = text.trim();
+    if (text) {
+      resultEl.textContent = '您说：' + text;
+      document.getElementById('interactionInput').value = text;
+    }
+  };
+  interactionRecognition.onerror = function(event) {
+    interactionRecording = false;
+    btn.classList.remove('recording');
+    btn.innerHTML = '按住<br>说话';
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') resultEl.textContent = '麦克风权限被拒绝，请在浏览器设置中允许';
+    else if (event.error === 'no-speech') resultEl.textContent = '没有听到声音，请大声再说一次';
+    else if (event.error === 'network') resultEl.textContent = '网络异常，语音识别需要联网';
+    else if (event.error === 'aborted') return;
+    else resultEl.textContent = '识别出错，请重试';
+  };
+  interactionRecognition.onend = function() {
+    interactionRecording = false;
+    btn.classList.remove('recording');
+    btn.innerHTML = '按住<br>说话';
+  };
+  try { interactionRecognition.start(); } catch(e) {}
+}
+function stopInteractionVoice() {
+  if (!interactionRecording || !interactionRecognition) return;
+  try { interactionRecognition.stop(); } catch(e) {}
 }
 // ============================================================
 //  到点提醒：定时检查

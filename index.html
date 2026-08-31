@@ -788,7 +788,7 @@ async function checkInteraction() {
   }
   if (!input) { alert('请输入药品名称或按住说话'); return; }
   resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在分析联用禁忌，请稍候...</div>';
-  const prompt = '用户输入可能是药品列表，也可能是自然语言提问（如：阿司匹林和布洛芬可以一起吃吗）。\n用户输入：' + input + '\n\n请先从用户输入中提取所有药品名称，然后分析这些药物之间的联用禁忌和相互作用。\n（注：药品名称可能用逗号、空格、顿号、和、与或连续书写分隔，请自行识别）\n\n请以严格JSON格式返回：\n{\n  "extractedDrugs": "提取出的所有药品名称，用逗号分隔",\n  "hasConflict": true或false,\n  "conflicts": [\n    {"pair": "药A+药B", "risk": "高/中/低", "description": "冲突原因和后果"}\n  ],\n  "warnings": "通用注意事项",\n  "suggestion": "给用户的建议"\n}\n\n要求：\n1. 只返回JSON，不要其他文字\n2. 基于医学常识，客观准确\n3. 语言通俗易懂，适合老年人\n4. 没有冲突时hasConflict为false，conflicts为空数组\n5. warnings和suggestion字段中必须明确提到具体的药品名称，不要用'这些药物''它们'等笼统表述';
+  const prompt = '用户输入可能是药品列表，也可能是自然语言提问（如：阿司匹林和布洛芬可以一起吃吗）。\n用户输入：' + input + '\n\n请先从用户输入中提取所有药品名称，然后分析这些药物之间的联用禁忌和相互作用。\n（注：药品名称可能用逗号、空格、顿号、和、与或连续书写分隔，请自行识别）\n\n请以严格JSON格式返回：\n{\n  "extractedDrugs": "提取出的所有药品名称，用逗号分隔",\n  "hasConflict": true或false,\n  "conflicts": [\n    {"pair": "药A+药B", "risk": "高/中/低", "description": "冲突原因和后果"}\n  ],\n  "warnings": "通用注意事项",\n  "suggestion": "给用户的建议"\n}\n\n要求：\n1. 只返回JSON，不要其他文字\n2. 基于医学常识，客观准确\n3. 语言通俗易懂，适合老年人\n4. 没有冲突时hasConflict为false，conflicts为空数组\n5. warnings和suggestion字段中必须明确提到具体的药品名称，不要用「这些药物」「它们」等笼统表述';
   try {
     const res = await fetch(AI_CONFIG.API_URL, {
       method: 'POST',

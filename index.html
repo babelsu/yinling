@@ -403,9 +403,6 @@
     服药计划
     <span class="sub">查看和管理所有提醒</span>
   </button>
-  <button class="btn btn-secondary" onclick="testReminderEffect()" style="display:block; width:100%; margin:0;">
-    🔔 测试提醒效果（振动+响铃）
-  </button>
 </div>
 <!-- ============ 拍药识药 ============ -->
 <div id="page-scan" class="page">
@@ -1077,13 +1074,6 @@ async function parseVoiceCommand(text) {
 }
 //  初始化
 // ============================================================
-// 测试提醒效果
-function testReminderEffect() {
-  playAlarm();
-  vibratePhone();
-  speak('这是提醒效果测试');
-}
-
 renderToday();
 </script>
 </body>

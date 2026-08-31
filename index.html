@@ -458,7 +458,7 @@
 const AI_CONFIG = {
   API_KEY: 'fa50168170174c708c0ee1f810abd65d.KLKJq9Tp33HYVemv',
   MODEL_LIST: ['glm-4v-flash'],        // 视觉模型，用于拍照识药
-  TEXT_MODEL: 'glm-4.7-flash',          // 文本模型，用于语音指令解析
+  TEXT_MODEL: 'glm-4v-flash',            // 用于语音指令解析（和拍照识药同一模型，已验证稳定）
   API_URL: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
 };
 // ============================================================
@@ -950,7 +950,7 @@ async function parseVoiceCommand(text) {
     }
   } catch (e) {
     console.warn('大模型解析失败:', e);
-    resultEl.textContent = '您说：' + text + '（解析失败，请手动填写或重试）';
+    resultEl.textContent = '您说：' + text + '（解析失败：' + e.message + '）';
   }
 }
 //  初始化

@@ -388,7 +388,7 @@
     </div>
     <img id="scanPreview" style="display:none;" alt="药盒照片">
   </div>
-  <input type="file" id="fileInput" accept="image/*" capture="environment" onchange="handleScan(event)">
+  <input type="file" id="fileInput" accept="image/*" onchange="handleScan(event)">
   <button class="btn-big btn-orange" onclick="speak('正在识别药品，请稍候'); document.getElementById('fileInput').click()">
     拍照 / 选图
   </button>
@@ -457,7 +457,8 @@
 // ============================================================
 const AI_CONFIG = {
   API_KEY: 'fa50168170174c708c0ee1f810abd65d.KLKJq9Tp33HYVemv',
-  MODEL_LIST: ['glm-4v-flash'],
+  MODEL_LIST: ['glm-4v-flash'],        // 视觉模型，用于拍照识药
+  TEXT_MODEL: 'glm-4.7-flash',          // 文本模型，用于语音指令解析
   API_URL: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
 };
 // ============================================================
@@ -849,7 +850,11 @@ function startVoice() {
     const full = (finalText + interimText).trim();
     if (full) {
       resultEl.textContent = '您说：' + full;
-      parseVoiceCommand(full);
+      if (finalText) {
+        // 最终识别结果：调用大模型解析
+        parseVoiceCommand(finalText);
+      }
+      // 临时结果只显示文字，不填充表单，避免边说边改错
     }
   };
   recognition.onerror = function (event) {
@@ -886,113 +891,61 @@ function stopVoice() {
   } catch (e) {}
 }
 // ============================================================
-//  语音指令解析
+//  语音指令解析：大模型
 // ============================================================
-const DRUG_NAMES = [
-  '阿司匹林肠溶片', '阿司匹林',
-  '氨氯地平片', '氨氯地平',
-  '二甲双胍片', '二甲双胍',
-  '阿托伐他汀钙片', '阿托伐他汀',
-  '硝苯地平缓释片', '硝苯地平',
-  '布洛芬缓释胶囊', '布洛芬',
-  '降压药', '降糖药', '降脂药',
-  '感冒药', '消炎药', '止痛药',
-  '维生素', '钙片', '鱼油'
-];
-function chineseToNum(str) {
-  const map = { '零':0, '一':1, '二':2, '两':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9 };
-  if (!str) return 0;
-  if (str === '十') return 10;
-  if (/^十[一二三四五六七八九]$/.test(str)) return 10 + map[str[1]];
-  if (/^[二三四五六七八九]十$/.test(str)) return map[str[0]] * 10;
-  if (/^[二三四五六七八九]十[一二三四五六七八九]$/.test(str)) return map[str[0]] * 10 + map[str[2]];
-  if (str.length === 1 && map[str] !== undefined) return map[str];
-  return parseInt(str) || 0;
-}
-function parseTime(text) {
-  let period = '';
-  if (/早上|早晨|上午/.test(text)) period = 'morning';
-  else if (/下午|午后/.test(text)) period = 'afternoon';
-  else if (/晚上|傍晚|夜里|夜晚/.test(text)) period = 'evening';
-  else if (/中午|正午/.test(text)) period = 'noon';
-  const cnRegex = /([零一二三四五六七八九十两]{1,3})[点时]([零一二三四五六七八九十两半]{1,3})?(?:分)?/;
-  const cnMatch = text.match(cnRegex);
-  if (cnMatch) {
-    let h = chineseToNum(cnMatch[1]);
-    let m = 0;
-    if (cnMatch[2]) {
-      m = (cnMatch[2] === '半') ? 30 : chineseToNum(cnMatch[2]);
+// 调用大模型解析语音指令，返回结构化JSON
+async function parseVoiceByLLM(text) {
+  const prompt = '请从以下语音指令中提取用药提醒信息，以严格JSON格式返回：\n{\n  "name": "药品名称",\n  "dose": "服用剂量（如1片、10毫升、5mg）",\n  "time": "服用时间，24小时制HH:MM格式（如08:00、19:30）",\n  "note": "服用说明（如饭后服用、饭前服用、空腹服用、睡前服用），没有则为空字符串"\n}\n\n语音指令：' + text + '\n\n要求：\n1. 只返回JSON，不要任何其他文字、解释或markdown代码块\n2. 时间统一转成24小时制HH:MM格式："早上八点"→"08:00"，"晚上七点半"→"19:30"，"下午三点十五"→"15:15"\n3. 所有字段用中文\n4. 提取不到的字段填空字符串';
+
+  const res = await fetch(AI_CONFIG.API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + AI_CONFIG.API_KEY
+    },
+    body: JSON.stringify({
+      model: AI_CONFIG.TEXT_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 300,
+      temperature: 0.1
+    })
+  });
+  if (!res.ok) throw new Error('API错误 ' + res.status);
+  const data = await res.json();
+  const content = data.choices[0].message.content;
+
+  // 多层容错解析JSON
+  let result;
+  try { result = JSON.parse(content); } catch (e) {
+    const m = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (m) { try { result = JSON.parse(m[1]); } catch(e2) {} }
+    if (!result) {
+      const f = content.indexOf('{'), l = content.lastIndexOf('}');
+      if (f !== -1 && l !== -1) { try { result = JSON.parse(content.substring(f, l + 1)); } catch(e3) {} }
     }
-    if (period === 'evening' && h < 12) h += 12;
-    else if (period === 'afternoon' && h < 12) h += 12;
-    else if (period === 'morning' && h === 12) h = 0;
-    return h.toString().padStart(2,'0') + ':' + m.toString().padStart(2,'0');
   }
-  const numRegex = /(\d{1,2})[点时:：](\d{1,2})?/;
-  const numMatch = text.match(numRegex);
-  if (numMatch) {
-    let h = parseInt(numMatch[1]);
-    let m = numMatch[2] ? parseInt(numMatch[2]) : 0;
-    if (period === 'evening' && h < 12) h += 12;
-    else if (period === 'afternoon' && h < 12) h += 12;
-    return h.toString().padStart(2,'0') + ':' + m.toString().padStart(2,'0');
+  return result;
+}
+
+// 主解析函数：大模型
+async function parseVoiceCommand(text) {
+  const resultEl = document.getElementById('voiceResult');
+  resultEl.textContent = '您说：' + text + '（正在解析...）';
+  try {
+    const result = await parseVoiceByLLM(text);
+    if (result) {
+      if (result.name) document.getElementById('medName').value = result.name;
+      if (result.dose) document.getElementById('medDose').value = result.dose;
+      if (result.time) document.getElementById('medTime').value = result.time;
+      if (result.note) document.getElementById('medNote').value = result.note;
+      resultEl.textContent = '您说：' + text + '（已解析）';
+      return;
+    }
+  } catch (e) {
+    console.warn('大模型解析失败:', e);
+    resultEl.textContent = '您说：' + text + '（解析失败，请手动填写或重试）';
   }
-  if (period === 'morning') return '08:00';
-  if (period === 'noon') return '12:00';
-  if (period === 'afternoon') return '15:00';
-  if (period === 'evening') return '19:00';
-  return null;
 }
-function parseDose(text) {
-  const units = '片|粒|颗|毫升|亳升|mg|毫克|克|袋|支|滴|丸';
-  const cnRegex = new RegExp('([零一二三四五六七八九十两]{1,3})\\s*(' + units + ')');
-  const cnMatch = text.match(cnRegex);
-  if (cnMatch) {
-    const num = chineseToNum(cnMatch[1]);
-    let unit = cnMatch[2];
-    if (unit === '亳升') unit = '毫升';
-    return num + unit;
-  }
-  const numRegex = new RegExp('(\\d+)\\s*(' + units + ')');
-  const numMatch = text.match(numRegex);
-  if (numMatch) return numMatch[1] + numMatch[2];
-  return null;
-}
-function parseDrugName(text) {
-  for (const name of DRUG_NAMES) {
-    if (text.includes(name)) return name;
-  }
-  let name = text
-    .replace(/每天|早上|晚上|中午|下午|早晨|上午|傍晚|夜里|夜晚|正午/g, '')
-    .replace(/服用|吃|喝|提醒我|帮我设?置?|记一下|记个|设个|设置|要吃|需要/g, '')
-    .replace(/饭后|饭前|空腹|睡前|随餐|餐中/g, '')
-    .replace(/[零一二三四五六七八九十两半]{1,3}[点时][零一二三四五六七八九十两半]{0,3}分?/g, '')
-    .replace(/\d{1,2}[点时:：]\d{0,2}/g, '')
-    .replace(/[零一二三四五六七八九十两]{1,3}\s*(片|粒|颗|毫升|毫克|克|袋|支|丸)/g, '')
-    .replace(/\d+\s*(片|粒|颗|毫升|mg|毫克|克|袋|支|丸)/g, '')
-    .replace(/[，。！？、\s]/g, '')
-    .trim();
-  return name || null;
-}
-function parseNote(text) {
-  if (/饭后/.test(text)) return '饭后服用';
-  if (/饭前/.test(text)) return '饭前服用';
-  if (/空腹/.test(text)) return '空腹服用';
-  if (/睡前/.test(text)) return '睡前服用';
-  if (/随餐|餐中/.test(text)) return '随餐服用';
-  return null;
-}
-function parseVoiceCommand(text) {
-  const time = parseTime(text);
-  if (time) document.getElementById('medTime').value = time;
-  const dose = parseDose(text);
-  if (dose) document.getElementById('medDose').value = dose;
-  const name = parseDrugName(text);
-  if (name) document.getElementById('medName').value = name;
-  const note = parseNote(text);
-  if (note) document.getElementById('medNote').value = note;
-}
-// ============================================================
 //  初始化
 // ============================================================
 renderToday();

@@ -18,7 +18,6 @@
   }
   .page { display:none; padding: 20px 16px; }
   .page.active { display:block; }
-
   /* ===== 顶部标题 ===== */
   .header {
     text-align: center;
@@ -34,7 +33,6 @@
     color: #888;
     margin-top: 6px;
   }
-
   /* ===== 大按钮 ===== */
   .btn-big {
     display: block;
@@ -63,7 +61,6 @@
   .btn-green  { background: linear-gradient(135deg, #52C41A, #389E0D); }
   .btn-blue   { background: linear-gradient(135deg, #40A9FF, #1890FF); }
   .btn-purple { background: linear-gradient(135deg, #9254DE, #722ED1); }
-
   /* ===== 次级按钮 ===== */
   .btn {
     display: inline-block;
@@ -79,7 +76,6 @@
   .btn-secondary { background: #f0f0f0; color: #333; }
   .btn-danger { background: #ff4d4f; color: #fff; }
   .btn-success { background: #52C41A; color: #fff; }
-
   /* ===== 今日概览卡片 ===== */
   .today-card {
     background: #fff;
@@ -118,7 +114,6 @@
     font-size: 20px;
     padding: 30px 0;
   }
-
   /* ===== 表单 ===== */
   .form-group {
     margin-bottom: 20px;
@@ -147,7 +142,6 @@
     gap: 10px;
   }
   .time-row input { flex: 1; }
-
   /* ===== 拍照区域 ===== */
   .scan-area {
     background: #fff;
@@ -170,7 +164,6 @@
     font-size: 22px;
   }
   #fileInput { display: none; }
-
   /* ===== 识药结果 ===== */
   .result-card {
     background: #fff;
@@ -203,7 +196,6 @@
     margin-top: 12px;
     font-size: 20px;
   }
-
   /* ===== 计划列表 ===== */
   .plan-item {
     background: #fff;
@@ -242,7 +234,6 @@
     font-size: 18px;
     margin: 0;
   }
-
   /* ===== 提醒弹窗 ===== */
   .reminder-overlay {
     display: none;
@@ -287,7 +278,6 @@
     text-align: center;
     padding: 24px;
   }
-
   /* ===== 返回栏 ===== */
   .top-bar {
     display: flex;
@@ -311,7 +301,6 @@
     color: #333;
     margin-right: 50px;
   }
-
   /* ===== 加载提示 ===== */
   .loading {
     text-align: center;
@@ -331,7 +320,6 @@
     vertical-align: middle;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-
   /* ===== 语音按钮 ===== */
   .voice-btn {
     width: 80px;
@@ -345,6 +333,9 @@
     cursor: pointer;
     margin: 10px auto;
     display: block;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
   }
   .voice-btn.recording {
     background: #ff4d4f;
@@ -363,19 +354,16 @@
 </style>
 </head>
 <body>
-
 <!-- ============ 首页 ============ -->
 <div id="page-home" class="page active">
   <div class="header">
     <h1>银龄药伴</h1>
     <p>您的贴心用药助手</p>
   </div>
-
   <div class="today-card">
     <h2>今日服药</h2>
     <div id="todayList"></div>
   </div>
-
   <button class="btn-big btn-orange" onclick="showPage('scan')">
     拍药识药
     <span class="sub">拍药盒，告诉您怎么吃</span>
@@ -389,69 +377,58 @@
     <span class="sub">查看和管理所有提醒</span>
   </button>
 </div>
-
 <!-- ============ 拍药识药 ============ -->
 <div id="page-scan" class="page">
   <div class="top-bar">
     <button class="back-btn" onclick="showPage('home')">← 返回</button>
     <span class="title">拍药识药</span>
   </div>
-
   <div class="scan-area">
     <div id="scanPlaceholder" class="scan-placeholder">
       点击下方按钮<br>拍摄或上传药盒照片
     </div>
     <img id="scanPreview" style="display:none;" alt="药盒照片">
   </div>
-
   <input type="file" id="fileInput" accept="image/*" capture="environment" onchange="handleScan(event)">
-  <button class="btn-big btn-orange" onclick="document.getElementById('fileInput').click()">
+  <button class="btn-big btn-orange" onclick="speak('正在识别药品，请稍候'); document.getElementById('fileInput').click()">
     拍照 / 选图
   </button>
-
   <div id="scanResult"></div>
 </div>
-
 <!-- ============ 设提醒 ============ -->
 <div id="page-add" class="page">
   <div class="top-bar">
     <button class="back-btn" onclick="showPage('home')">← 返回</button>
     <span class="title">设提醒</span>
   </div>
-
   <div class="form-group">
     <label>药品名称</label>
     <input type="text" id="medName" placeholder="例如：阿司匹林">
   </div>
-
   <div class="form-group">
     <label>服用剂量</label>
     <input type="text" id="medDose" placeholder="例如：1片 / 10毫升">
   </div>
-
   <div class="form-group">
     <label>服用时间</label>
     <div class="time-row">
       <input type="time" id="medTime" value="08:00">
     </div>
   </div>
-
   <div class="form-group">
     <label>服用说明（可选）</label>
     <input type="text" id="medNote" placeholder="例如：饭后服用">
   </div>
-
   <button class="btn-big btn-green" onclick="savePlan()">
     保存提醒
   </button>
-
   <div style="margin-top:20px; text-align:center;">
-    <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">按住<br>说话</button>
+    <!-- 改动：去掉 onclick，改为 JS 绑定按下/松开事件 -->
+    <button class="voice-btn" id="voiceBtn">按住<br>说话</button>
     <p class="voice-tip">按住说话，自动填写药品信息</p>
     <p id="voiceResult" style="font-size:19px; color:#E8652A; margin-top:10px;"></p>
   </div>
 </div>
-
 <!-- ============ 服药计划 ============ -->
 <div id="page-plan" class="page">
   <div class="top-bar">
@@ -460,7 +437,6 @@
   </div>
   <div id="planList"></div>
 </div>
-
 <!-- ============ 服药提醒弹窗 ============ -->
 <div id="reminderOverlay" class="reminder-overlay">
   <div class="reminder-box">
@@ -476,13 +452,11 @@
     </button>
   </div>
 </div>
-
 <script>
 // ============================================================
 //  数据层：本地存储
 // ============================================================
 const STORAGE_KEY = 'yinling_plans';
-
 function loadPlans() {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
@@ -490,11 +464,9 @@ function loadPlans() {
     return [];
   }
 }
-
 function savePlans(plans) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(plans));
 }
-
 // ============================================================
 //  页面切换
 // ============================================================
@@ -505,7 +477,6 @@ function showPage(name) {
   if (name === 'plan') renderPlanList();
   window.scrollTo(0, 0);
 }
-
 // ============================================================
 //  首页：今日服药概览
 // ============================================================
@@ -513,16 +484,13 @@ function renderToday() {
   const plans = loadPlans();
   const today = new Date().toDateString();
   const list = document.getElementById('todayList');
-
   const todayPlans = plans
     .filter(p => p.time)
     .sort((a, b) => a.time.localeCompare(b.time));
-
   if (todayPlans.length === 0) {
     list.innerHTML = '<div class="empty-tip">还没有服药计划<br>点击下方"设提醒"添加</div>';
     return;
   }
-
   list.innerHTML = todayPlans.map(p => {
     const taken = p.takenDates && p.takenDates.includes(today);
     return `<div class="today-item ${taken ? 'done' : ''}">
@@ -532,7 +500,6 @@ function renderToday() {
     </div>`;
   }).join('');
 }
-
 // ============================================================
 //  设提醒：保存计划
 // ============================================================
@@ -541,10 +508,8 @@ function savePlan() {
   const dose = document.getElementById('medDose').value.trim();
   const time = document.getElementById('medTime').value;
   const note = document.getElementById('medNote').value.trim();
-
   if (!name) { alert('请填写药品名称'); return; }
   if (!time) { alert('请选择服用时间'); return; }
-
   const plans = loadPlans();
   plans.push({
     id: Date.now(),
@@ -553,29 +518,24 @@ function savePlan() {
     createdAt: new Date().toISOString()
   });
   savePlans(plans);
-
   // 清空表单
   document.getElementById('medName').value = '';
   document.getElementById('medDose').value = '';
   document.getElementById('medNote').value = '';
-
   speak('提醒已设置，' + name + '，' + time + '服用');
   alert('保存成功！');
   showPage('home');
 }
-
 // ============================================================
 //  服药计划列表
 // ============================================================
 function renderPlanList() {
   const plans = loadPlans().sort((a, b) => a.time.localeCompare(b.time));
   const list = document.getElementById('planList');
-
   if (plans.length === 0) {
     list.innerHTML = '<div class="empty-tip">还没有服药计划</div>';
     return;
   }
-
   const today = new Date().toDateString();
   list.innerHTML = plans.map(p => {
     const taken = p.takenDates && p.takenDates.includes(today);
@@ -594,7 +554,6 @@ function renderPlanList() {
     </div>`;
   }).join('');
 }
-
 function markTaken(id, taken = true) {
   const plans = loadPlans();
   const p = plans.find(x => x.id === id);
@@ -609,31 +568,26 @@ function markTaken(id, taken = true) {
   savePlans(plans);
   renderPlanList();
 }
-
 function deletePlan(id) {
   if (!confirm('确定删除这个提醒吗？')) return;
   savePlans(loadPlans().filter(p => p.id !== id));
   renderPlanList();
 }
-
 // ============================================================
 //  拍药识药（演示模式：模拟AI识别结果）
 // ============================================================
 function handleScan(event) {
   const file = event.target.files[0];
   if (!file) return;
-
   const preview = document.getElementById('scanPreview');
   const placeholder = document.getElementById('scanPlaceholder');
   const resultDiv = document.getElementById('scanResult');
-
   const reader = new FileReader();
   reader.onload = function(e) {
     preview.src = e.target.result;
     preview.style.display = 'block';
     placeholder.style.display = 'none';
     resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在识别药品...</div>';
-
     // 模拟AI识别（1.5秒后返回结果）
     setTimeout(() => {
       showMockResult();
@@ -641,7 +595,6 @@ function handleScan(event) {
   };
   reader.readAsDataURL(file);
 }
-
 // 模拟药品库 —— 实际使用时替换为真实AI接口
 const MOCK_MEDS = [
   {
@@ -677,12 +630,10 @@ const MOCK_MEDS = [
     interaction: '避免与葡萄柚汁同服；与某些抗生素、抗真菌药同服需咨询医生。'
   }
 ];
-
 function showMockResult() {
   // 随机选一个模拟结果，实际使用时调用真实AI接口
   const med = MOCK_MEDS[Math.floor(Math.random() * MOCK_MEDS.length)];
   const resultDiv = document.getElementById('scanResult');
-
   resultDiv.innerHTML = `
     <div class="result-card">
       <h3>${med.name}</h3>
@@ -702,29 +653,24 @@ function showMockResult() {
       </div>
     </div>
   `;
-
   speak('识别完成。' + med.name + '，' + med.usage + '。' + med.caution);
 }
-
 // 识药结果一键添加为提醒
 function quickAddPlan(name, dose) {
   document.getElementById('medName').value = name;
   document.getElementById('medDose').value = dose;
   showPage('add');
 }
-
 // ============================================================
 //  到点提醒：定时检查
 // ============================================================
 let currentReminderId = null;
 let snoozeTimers = {};
-
 function checkReminders() {
   const now = new Date();
   const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
   const today = now.toDateString();
   const plans = loadPlans();
-
   for (const p of plans) {
     if (p.time === currentTime) {
       const alreadyTaken = p.takenDates && p.takenDates.includes(today);
@@ -738,7 +684,6 @@ function checkReminders() {
     }
   }
 }
-
 function showReminder(plan) {
   currentReminderId = plan.id;
   document.getElementById('reminderName').textContent = plan.name;
@@ -746,7 +691,6 @@ function showReminder(plan) {
   document.getElementById('reminderOverlay').classList.add('show');
   speak('该吃药了。' + plan.name + '，' + (plan.dose || ''));
 }
-
 function confirmTaken() {
   if (currentReminderId) {
     markTaken(currentReminderId, true);
@@ -755,7 +699,6 @@ function confirmTaken() {
   currentReminderId = null;
   renderToday();
 }
-
 function snoozeReminder() {
   document.getElementById('reminderOverlay').classList.remove('show');
   if (currentReminderId) {
@@ -773,10 +716,8 @@ function snoozeReminder() {
   }
   currentReminderId = null;
 }
-
 // 每30秒检查一次是否到点
 setInterval(checkReminders, 30000);
-
 // ============================================================
 //  语音播报
 // ============================================================
@@ -792,64 +733,136 @@ function speak(text) {
 }
 
 // ============================================================
-//  语音输入（可选，浏览器支持时可用）
+//  语音输入：按住说话（修复版）
+//  改动说明：
+//  1. 去掉原来的 onclick 切换模式，改为"按下开始、松开停止"
+//  2. 同时绑定鼠标事件（电脑）和触屏事件（手机）
+//  3. 开启 interimResults 实时显示识别结果
+//  4. 完善错误提示，区分权限拒绝、无语音、网络异常
 // ============================================================
 let recognition = null;
 let isRecording = false;
 
-function toggleVoice() {
+// 页面加载后自动绑定按钮事件
+(function initVoiceBtn() {
+  const btn = document.getElementById('voiceBtn');
+  if (!btn) return;
+
+  // —— 按下：开始识别 ——
+  btn.addEventListener('mousedown', function (e) {
+    e.preventDefault();
+    startVoice();
+  });
+  btn.addEventListener('touchstart', function (e) {
+    e.preventDefault(); // 阻止触发鼠标事件和长按菜单
+    startVoice();
+  }, { passive: false });
+
+  // —— 松开：停止识别 ——
+  btn.addEventListener('mouseup', function (e) {
+    e.preventDefault();
+    stopVoice();
+  });
+  btn.addEventListener('mouseleave', stopVoice); // 手指滑出按钮也停止
+  btn.addEventListener('touchend', function (e) {
+    e.preventDefault();
+    stopVoice();
+  }, { passive: false });
+  btn.addEventListener('touchcancel', stopVoice); // 系统中断也停止
+})();
+
+function startVoice() {
   const btn = document.getElementById('voiceBtn');
   const resultEl = document.getElementById('voiceResult');
-
-  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-    alert('您的浏览器不支持语音识别，请手动填写');
-    return;
-  }
-
-  if (isRecording) {
-    if (recognition) recognition.stop();
-    btn.classList.remove('recording');
-    btn.innerHTML = '按住<br>说话';
-    isRecording = false;
-    return;
-  }
+  if (isRecording) return;
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SR();
-  recognition.lang = 'zh-CN';
-  recognition.interimResults = false;
+  if (!SR) {
+    resultEl.textContent = '当前浏览器不支持语音识别，请用Safari或Chrome打开';
+    resultEl.style.color = '#999';
+    return;
+  }
 
-  recognition.onstart = function() {
+  try {
+    recognition = new SR();
+  } catch (e) {
+    resultEl.textContent = '语音识别启动失败，请重试';
+    return;
+  }
+
+  recognition.lang = 'zh-CN';
+  recognition.interimResults = true;  // 实时返回临时结果
+  recognition.continuous = false;      // 单次识别
+
+  recognition.onstart = function () {
     isRecording = true;
     btn.classList.add('recording');
     btn.innerHTML = '正在<br>听...';
+    resultEl.style.color = '#E8652A';
     resultEl.textContent = '请说话...';
   };
 
-  recognition.onresult = function(event) {
-    const text = event.results[0][0].transcript;
-    resultEl.textContent = '您说：' + text;
-    // 简单解析：尝试提取药名和时间
-    parseVoiceCommand(text);
+  recognition.onresult = function (event) {
+    let finalText = '';
+    let interimText = '';
+    for (let i = 0; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        finalText += event.results[i][0].transcript;
+      } else {
+        interimText += event.results[i][0].transcript;
+      }
+    }
+    const full = (finalText + interimText).trim();
+    if (full) {
+      resultEl.textContent = '您说：' + full;
+    }
+    // 最终结果出来后，自动解析并填入表单
+    if (finalText) {
+      parseVoiceCommand(finalText);
+    }
   };
 
-  recognition.onerror = function() {
-    resultEl.textContent = '没听清，请再试一次';
+  recognition.onerror = function (event) {
+    isRecording = false;
     btn.classList.remove('recording');
     btn.innerHTML = '按住<br>说话';
-    isRecording = false;
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      resultEl.textContent = '麦克风权限被拒绝，请在浏览器设置中允许麦克风';
+    } else if (event.error === 'no-speech') {
+      resultEl.textContent = '没有听到声音，请大声再说一次';
+    } else if (event.error === 'network') {
+      resultEl.textContent = '网络异常，语音识别需要联网';
+    } else if (event.error === 'aborted') {
+      // 用户主动松开导致的中止，不提示
+      return;
+    } else {
+      resultEl.textContent = '识别出错，请重试';
+    }
   };
 
-  recognition.onend = function() {
+  recognition.onend = function () {
+    isRecording = false;
     btn.classList.remove('recording');
     btn.innerHTML = '按住<br>说话';
-    isRecording = false;
   };
 
-  recognition.start();
+  try {
+    recognition.start();
+  } catch (e) {
+    resultEl.textContent = '启动失败，请重试';
+  }
 }
 
-// 简单语音指令解析（演示版，实际可用AI增强）
+function stopVoice() {
+  if (!isRecording || !recognition) return;
+  try {
+    recognition.stop();
+  } catch (e) {
+    // 忽略重复停止的报错
+  }
+}
+
+// 简单语音指令解析（保留原逻辑不变）
 function parseVoiceCommand(text) {
   // 提取时间
   const timeMatch = text.match(/(\d{1,2})[点时:：](\d{1,2})?/);
@@ -879,6 +892,5 @@ function parseVoiceCommand(text) {
 // ============================================================
 renderToday();
 </script>
-
 </body>
 </html>

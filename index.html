@@ -452,11 +452,12 @@
 </div>
 <script>
 // ============================================================
-//  大模型配置（智谱AI - GLM-4.6V-Flash 免费视觉模型）
+//  大模型配置（智谱AI - 免费视觉模型，带自动降级）
+//  优先级：4.6v → 4.1v-thinking → 4v，前一个被挤爆自动换下一个
 // ============================================================
 const AI_CONFIG = {
   API_KEY: 'fa50168170174c708c0ee1f810abd65d.KLKJq9Tp33HYVemv',
-  MODEL_ID: 'glm-4.6v-flash',
+  MODEL_LIST: ['glm-4v-flash'],
   API_URL: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
 };
 // ============================================================
@@ -598,62 +599,78 @@ function handleScan(event) {
       return;
     }
     const prompt = '请仔细识别这张药品照片中的药盒信息，提取以下内容并以严格的JSON格式返回：\n{\n  "name": "药品通用名（如：阿司匹林肠溶片）",\n  "dose": "规格剂量（如：100mg）",\n  "usage": "用法用量（如：口服，每天1次，每次1片）",\n  "timing": "服用时间建议（如：建议饭后服用）",\n  "caution": "注意事项和不良反应（简洁明了，适合老年人阅读）",\n  "interaction": "药物相互作用或联用提醒（没有则写无特殊联用提醒）"\n}\n要求：\n1. 只返回JSON，不要任何其他文字、解释或markdown代码块标记\n2. 如果照片不清晰或不是药品，name字段填未能识别出药品，其他字段填空字符串\n3. 所有字段用中文\n4. 注意事项要通俗易懂，避免专业术语堆砌';
-    fetch(AI_CONFIG.API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + AI_CONFIG.API_KEY
-      },
-      body: JSON.stringify({
-        model: AI_CONFIG.MODEL_ID,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'image_url', image_url: { url: e.target.result } },
-              { type: 'text', text: prompt }
-            ]
-          }
-        ],
-        max_tokens: 1200,
-        temperature: 0.3
+
+    // 带自动降级的API调用：第一个模型被挤爆就自动换下一个
+    let modelIndex = 0;
+    function callVisionAPI() {
+      const currentModel = AI_CONFIG.MODEL_LIST[modelIndex];
+      resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在识别（' + currentModel + '），请稍候...</div>';
+      fetch(AI_CONFIG.API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + AI_CONFIG.API_KEY
+        },
+        body: JSON.stringify({
+          model: currentModel,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'image_url', image_url: { url: e.target.result } },
+                { type: 'text', text: prompt }
+              ]
+            }
+          ],
+          max_tokens: 1200,
+          temperature: 0.3
+        })
       })
-    })
-    .then(function(res) {
-      if (!res.ok) {
-        return res.text().then(function(t) {
-          throw new Error('API错误 ' + res.status + ': ' + t.substring(0, 200));
-        });
-      }
-      return res.json();
-    })
-    .then(function(data) {
-      const content = data.choices[0].message.content;
-      let result;
-      try {
-        result = JSON.parse(content);
-      } catch (e) {
-        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        if (jsonMatch) {
-          try { result = JSON.parse(jsonMatch[1]); } catch(e2) {}
+      .then(function(res) {
+        if (!res.ok) {
+          return res.text().then(function(t) {
+            throw new Error('API错误 ' + res.status + ': ' + t.substring(0, 200));
+          });
+        }
+        return res.json();
+      })
+      .then(function(data) {
+        const content = data.choices[0].message.content;
+        let result;
+        try {
+          result = JSON.parse(content);
+        } catch (e) {
+          const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+          if (jsonMatch) {
+            try { result = JSON.parse(jsonMatch[1]); } catch(e2) {}
+          }
+          if (!result) {
+            const firstBrace = content.indexOf('{');
+            const lastBrace = content.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace !== -1) {
+              try { result = JSON.parse(content.substring(firstBrace, lastBrace + 1)); } catch(e3) {}
+            }
+          }
         }
         if (!result) {
-          const firstBrace = content.indexOf('{');
-          const lastBrace = content.lastIndexOf('}');
-          if (firstBrace !== -1 && lastBrace !== -1) {
-            try { result = JSON.parse(content.substring(firstBrace, lastBrace + 1)); } catch(e3) {}
-          }
+          result = { name: '识别结果', usage: content.substring(0, 200) };
         }
-      }
-      if (!result) {
-        result = { name: '识别结果', usage: content.substring(0, 200) };
-      }
-      showRecognizeResult(result);
-    })
-    .catch(function(err) {
-      resultDiv.innerHTML = '<div class="warn-box">识别失败：' + err.message + '<br><br>请检查API Key和模型ID是否正确，网络是否正常。</div>';
-      speak('识别失败，请检查配置');
-    });
+        showRecognizeResult(result);
+      })
+      .catch(function(err) {
+        // 如果是429限流且还有备用模型，自动降级
+        const isRateLimit = err.message.indexOf('429') !== -1 || err.message.indexOf('1305') !== -1;
+        if (isRateLimit && modelIndex < AI_CONFIG.MODEL_LIST.length - 1) {
+          modelIndex++;
+          resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>' + AI_CONFIG.MODEL_LIST[modelIndex - 1] + ' 繁忙，切换到 ' + AI_CONFIG.MODEL_LIST[modelIndex] + ' 重试...</div>';
+          setTimeout(callVisionAPI, 1000);  // 等1秒再试
+        } else {
+          resultDiv.innerHTML = '<div class="warn-box">识别失败：' + err.message + '<br><br>请检查网络是否正常，或稍后再试。</div>';
+          speak('识别失败，请稍后再试');
+        }
+      });
+    }
+    callVisionAPI();
   };
   reader.readAsDataURL(file);
 }

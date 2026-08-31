@@ -477,8 +477,8 @@
     <span class="title">联用禁忌</span>
   </div>
   <div class="form-group">
-    <label>输入药品名称或直接提问</label>
-    <textarea id="interactionInput" rows="3" style="width:100%; padding:16px; font-size:22px; border:2px solid #ddd; border-radius:12px; resize:vertical; font-family:inherit;" placeholder="例如：阿司匹林和布洛芬能一起吃吗"></textarea>
+    <label>输入药品名称(以逗号隔开)或直接提问</label>
+    <textarea id="interactionInput" rows="3" style="width:100%; padding:16px; font-size:22px; border:2px solid #ddd; border-radius:12px; resize:vertical; font-family:inherit;" placeholder=""></textarea>
   </div>
   <button class="btn-big btn-blue" onclick="checkInteraction()">
     检查联用禁忌
@@ -538,6 +538,12 @@ function showPage(name) {
   document.getElementById('page-' + name).classList.add('active');
   if (name === 'home') renderToday();
   if (name === 'plan') renderPlanList();
+  if (name === 'interaction') {
+    document.getElementById('interactionInput').value = '';
+    document.getElementById('interactionResult').innerHTML = '';
+    document.getElementById('interactionVoiceResult').textContent = '';
+    lastInteractionVoiceText = '';
+  }
   window.scrollTo(0, 0);
 }
 // ============================================================

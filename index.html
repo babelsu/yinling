@@ -720,23 +720,52 @@ function quickAddPlanFromResult() {
 //  到点提醒：定时检查
 // ============================================================
 let currentReminderId = null;
+let reminderTimer = null;
+
+// 检查提醒：用时间戳比较，错过的也能补弹（解决后台节流跳过时间点的问题）
 function checkReminders() {
   const now = new Date();
-  const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
   const today = now.toDateString();
   const plans = loadPlans();
   for (const p of plans) {
-    if (p.time === currentTime) {
+    // 计算今天该计划的时间戳
+    const parts = p.time.split(':');
+    const planTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(parts[0]), parseInt(parts[1]), 0, 0);
+    // 计划时间已到（包括错过的）且今天没吃、没提醒过 → 弹
+    if (planTime <= now) {
       const alreadyTaken = p.takenDates && p.takenDates.includes(today);
       const alreadyReminded = p.lastReminded === today;
       if (!alreadyTaken && !alreadyReminded) {
         p.lastReminded = today;
         savePlans(plans);
         showReminder(p);
-        return;
+        return; // 一次只弹一个
       }
     }
   }
+}
+
+// 用 setTimeout 递归代替 setInterval，每次校准到下一个整分钟（更精准，不累积误差）
+function scheduleNextCheck() {
+  const now = new Date();
+  const nextMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes() + 1, 0, 0);
+  const delay = nextMinute - now;
+  reminderTimer = setTimeout(function() {
+    checkReminders();
+    scheduleNextCheck();
+  }, delay);
+}
+
+// 页面从后台切回前台时，立即补检一次（解决后台定时器暂停的问题）
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden) {
+    checkReminders();
+  }
+});
+
+// 页面加载时请求系统通知权限（后台时通过系统通知提醒）
+if ('Notification' in window && Notification.permission === 'default') {
+  Notification.requestPermission();
 }
 function showReminder(plan) {
   currentReminderId = plan.id;
@@ -744,6 +773,15 @@ function showReminder(plan) {
   document.getElementById('reminderDose').textContent = (plan.dose || '请按医嘱服用') + (plan.note ? '（' + plan.note + '）' : '');
   document.getElementById('reminderOverlay').classList.add('show');
   speak('该吃药了。' + plan.name + '，' + (plan.dose || ''));
+  // 系统通知：即使页面在后台，也能在桌面弹出提醒
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification('银龄药伴 - 该吃药啦', {
+        body: plan.name + ' ' + (plan.dose || '') + (plan.note ? '（' + plan.note + '）' : ''),
+        tag: 'medication-' + plan.id
+      });
+    } catch(e) {}
+  }
 }
 function confirmTaken() {
   if (currentReminderId) {
@@ -770,7 +808,7 @@ function snoozeReminder() {
   }
   currentReminderId = null;
 }
-setInterval(checkReminders, 30000);
+scheduleNextCheck();  // 启动定时器（递归setTimeout，校准到整分钟）
 // ============================================================
 //  语音播报
 // ============================================================

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -357,7 +357,7 @@
 <!-- ============ 首页 ============ -->
 <div id="page-home" class="page active">
   <div class="header">
-    <h1>银龄药伴</h1>
+    <h1>银龄药伴v1</h1>
     <p>您的贴心用药助手</p>
   </div>
   <div class="today-card">
@@ -815,10 +815,8 @@ function startVoice() {
     const full = (finalText + interimText).trim();
     if (full) {
       resultEl.textContent = '您说：' + full;
-    }
-    // 最终结果出来后，自动解析并填入表单
-    if (finalText) {
-      parseVoiceCommand(finalText);
+      // 实时解析并填入表单（临时结果也填，边说边填）
+      parseVoiceCommand(full);
     }
   };
 

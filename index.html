@@ -107,6 +107,34 @@
   }
   .status-pending { background: #FFF2E8; color: #E8652A; }
   .status-done { background: #f6ffed; color: #52C41A; }
+  /* 今日服药操作按钮 */
+  .today-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .status-btn {
+    font-size: 18px;
+    padding: 6px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .status-btn.status-pending { background: #FFF2E8; color: #E8652A; }
+  .status-btn.status-done { background: #f6ffed; color: #52C41A; }
+  .delete-btn {
+    font-size: 17px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: none;
+    background: #fff1f0;
+    color: #ff4d4f;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .delete-btn:active { background: #ffccc7; }
   .empty-tip {
     text-align: center;
     color: #999;
@@ -375,6 +403,9 @@
     服药计划
     <span class="sub">查看和管理所有提醒</span>
   </button>
+  <button class="btn btn-secondary" onclick="testReminderEffect()" style="display:block; width:100%; margin:0;">
+    🔔 测试提醒效果（振动+响铃）
+  </button>
 </div>
 <!-- ============ 拍药识药 ============ -->
 <div id="page-scan" class="page">
@@ -503,8 +534,11 @@ function renderToday() {
     const taken = p.takenDates && p.takenDates.includes(today);
     return `<div class="today-item ${taken ? 'done' : ''}">
       <span class="time">${p.time}</span>
-      <span>${p.name} ${p.dose || ''}</span>
-      <span class="status ${taken ? 'status-done' : 'status-pending'}">${taken ? '已吃' : '待吃'}</span>
+      <span style="flex:1;">${p.name} ${p.dose || ''}</span>
+      <div class="today-actions">
+        <button class="status-btn ${taken ? 'status-done' : 'status-pending'}" onclick="markTaken(${p.id}, ${taken ? 'false' : 'true'})">${taken ? '已吃' : '待吃'}</button>
+        <button class="delete-btn" onclick="deletePlan(${p.id})">删除</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -573,11 +607,13 @@ function markTaken(id, taken = true) {
     p.takenDates = p.takenDates.filter(d => d !== today);
   }
   savePlans(plans);
+  renderToday();
   renderPlanList();
 }
 function deletePlan(id) {
   if (!confirm('确定删除这个提醒吗？')) return;
   savePlans(loadPlans().filter(p => p.id !== id));
+  renderToday();
   renderPlanList();
 }
 // ============================================================
@@ -773,6 +809,8 @@ function showReminder(plan) {
   document.getElementById('reminderDose').textContent = (plan.dose || '请按医嘱服用') + (plan.note ? '（' + plan.note + '）' : '');
   document.getElementById('reminderOverlay').classList.add('show');
   speak('该吃药了。' + plan.name + '，' + (plan.dose || ''));
+  playAlarm();       // 提示音
+  vibratePhone();    // 手机振动
   // 系统通知：即使页面在后台，也能在桌面弹出提醒
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
@@ -809,6 +847,52 @@ function snoozeReminder() {
   currentReminderId = null;
 }
 scheduleNextCheck();  // 启动定时器（递归setTimeout，校准到整分钟）
+// ============================================================
+//  提醒效果：提示音 + 振动 + 语音播报
+// ============================================================
+let audioCtx = null;
+// 用户第一次交互时初始化音频（解决浏览器自动播放限制）
+function initAudio() {
+  if (!audioCtx) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch(e) {}
+  }
+}
+document.addEventListener('click', initAudio, { once: true });
+document.addEventListener('touchstart', initAudio, { once: true });
+
+// 播放急促的闹钟提示音（3声"滴滴滴"，用Web Audio API生成，无需外部文件）
+function playAlarm() {
+  if (!audioCtx) initAudio();
+  if (!audioCtx) return;
+  try {
+    for (let i = 0; i < 3; i++) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.value = 880;  // A5音，尖锐醒目
+      osc.type = 'sine';
+      const t = audioCtx.currentTime + i * 0.45;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.6, t + 0.05);
+      gain.gain.linearRampToValueAtTime(0, t + 0.35);
+      osc.start(t);
+      osc.stop(t + 0.4);
+    }
+  } catch(e) {}
+}
+
+// 手机振动（安卓支持，iOS不支持，自动忽略）
+function vibratePhone() {
+  if (navigator.vibrate) {
+    try {
+      navigator.vibrate([300, 150, 300, 150, 300, 150, 300]);  // 振动4次
+    } catch(e) {}
+  }
+}
+
 // ============================================================
 //  语音播报
 // ============================================================
@@ -993,6 +1077,13 @@ async function parseVoiceCommand(text) {
 }
 //  初始化
 // ============================================================
+// 测试提醒效果
+function testReminderEffect() {
+  playAlarm();
+  vibratePhone();
+  speak('这是提醒效果测试');
+}
+
 renderToday();
 </script>
 </body>

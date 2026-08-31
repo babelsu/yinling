@@ -814,6 +814,8 @@ let isRecording = false;
 function startVoice() {
   const btn = document.getElementById('voiceBtn');
   const resultEl = document.getElementById('voiceResult');
+  let lastVoiceText = '';
+  let voiceParsed = false;
   if (isRecording) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
@@ -850,11 +852,11 @@ function startVoice() {
     const full = (finalText + interimText).trim();
     if (full) {
       resultEl.textContent = '您说：' + full;
-      if (finalText) {
-        // 最终识别结果：调用大模型解析
+      lastVoiceText = full;
+      if (finalText && !voiceParsed) {
+        voiceParsed = true;
         parseVoiceCommand(finalText);
       }
-      // 临时结果只显示文字，不填充表单，避免边说边改错
     }
   };
   recognition.onerror = function (event) {
@@ -877,6 +879,11 @@ function startVoice() {
     isRecording = false;
     btn.classList.remove('recording');
     btn.innerHTML = '按住<br>说话';
+    // 识别结束时，如果还没解析过（只有临时结果没有最终结果），用最后的文本兜底解析
+    if (lastVoiceText && !voiceParsed) {
+      voiceParsed = true;
+      parseVoiceCommand(lastVoiceText);
+    }
   };
   try {
     recognition.start();

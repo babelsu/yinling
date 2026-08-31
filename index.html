@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -60,7 +60,6 @@
   .btn-orange { background: linear-gradient(135deg, #FF8C42, #E8652A); }
   .btn-green  { background: linear-gradient(135deg, #52C41A, #389E0D); }
   .btn-blue   { background: linear-gradient(135deg, #40A9FF, #1890FF); }
-  .btn-purple { background: linear-gradient(135deg, #9254DE, #722ED1); }
   /* ===== 次级按钮 ===== */
   .btn {
     display: inline-block;
@@ -357,7 +356,7 @@
 <!-- ============ 首页 ============ -->
 <div id="page-home" class="page active">
   <div class="header">
-    <h1>银龄药伴v1</h1>
+    <h1>银龄药伴</h1>
     <p>您的贴心用药助手</p>
   </div>
   <div class="today-card">
@@ -423,7 +422,6 @@
     保存提醒
   </button>
   <div style="margin-top:20px; text-align:center;">
-    <!-- 改动：去掉 onclick，改为 JS 绑定按下/松开事件 -->
     <button class="voice-btn" id="voiceBtn">按住<br>说话</button>
     <p class="voice-tip">按住说话，自动填写药品信息</p>
     <p id="voiceResult" style="font-size:19px; color:#E8652A; margin-top:10px;"></p>
@@ -453,6 +451,14 @@
   </div>
 </div>
 <script>
+// ============================================================
+//  大模型配置（智谱AI - GLM-4.6V-Flash 免费视觉模型）
+// ============================================================
+const AI_CONFIG = {
+  API_KEY: 'fa50168170174c708c0ee1f810abd65d.KLKJq9Tp33HYVemv',
+  MODEL_ID: 'glm-4.6v-flash',
+  API_URL: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+};
 // ============================================================
 //  数据层：本地存储
 // ============================================================
@@ -518,7 +524,6 @@ function savePlan() {
     createdAt: new Date().toISOString()
   });
   savePlans(plans);
-  // 清空表单
   document.getElementById('medName').value = '';
   document.getElementById('medDose').value = '';
   document.getElementById('medNote').value = '';
@@ -549,7 +554,7 @@ function renderPlanList() {
         ${taken
           ? '<button class="btn btn-secondary" onclick="markTaken(' + p.id + ', false)">撤销</button>'
           : '<button class="btn btn-success" onclick="markTaken(' + p.id + ')">已吃</button>'}
-        <button class="btn btn-danger" onclick="deletePlan(${p.id})">删除</button>
+        <button class="btn btn-danger" onclick="deletePlan(' + p.id + ')">删除</button>
       </div>
     </div>`;
   }).join('');
@@ -574,7 +579,7 @@ function deletePlan(id) {
   renderPlanList();
 }
 // ============================================================
-//  拍药识药（演示模式：模拟AI识别结果）
+//  拍药识药（调用智谱GLM-4.6V-Flash视觉大模型API）
 // ============================================================
 function handleScan(event) {
   const file = event.target.files[0];
@@ -587,85 +592,116 @@ function handleScan(event) {
     preview.src = e.target.result;
     preview.style.display = 'block';
     placeholder.style.display = 'none';
-    resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在识别药品...</div>';
-    // 模拟AI识别（1.5秒后返回结果）
-    setTimeout(() => {
-      showMockResult();
-    }, 1500);
+    resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在识别药品，请稍候...</div>';
+    if (!AI_CONFIG.API_KEY || AI_CONFIG.API_KEY.indexOf('你的') !== -1) {
+      resultDiv.innerHTML = '<div class="warn-box">尚未配置大模型API密钥。<br><br>请在HTML代码中找到 AI_CONFIG，填入你的 API_KEY 和 MODEL_ID 后重新部署。</div>';
+      return;
+    }
+    const prompt = '请仔细识别这张药品照片中的药盒信息，提取以下内容并以严格的JSON格式返回：\n{\n  "name": "药品通用名（如：阿司匹林肠溶片）",\n  "dose": "规格剂量（如：100mg）",\n  "usage": "用法用量（如：口服，每天1次，每次1片）",\n  "timing": "服用时间建议（如：建议饭后服用）",\n  "caution": "注意事项和不良反应（简洁明了，适合老年人阅读）",\n  "interaction": "药物相互作用或联用提醒（没有则写无特殊联用提醒）"\n}\n要求：\n1. 只返回JSON，不要任何其他文字、解释或markdown代码块标记\n2. 如果照片不清晰或不是药品，name字段填未能识别出药品，其他字段填空字符串\n3. 所有字段用中文\n4. 注意事项要通俗易懂，避免专业术语堆砌';
+    fetch(AI_CONFIG.API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + AI_CONFIG.API_KEY
+      },
+      body: JSON.stringify({
+        model: AI_CONFIG.MODEL_ID,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: e.target.result } },
+              { type: 'text', text: prompt }
+            ]
+          }
+        ],
+        max_tokens: 1200,
+        temperature: 0.3
+      })
+    })
+    .then(function(res) {
+      if (!res.ok) {
+        return res.text().then(function(t) {
+          throw new Error('API错误 ' + res.status + ': ' + t.substring(0, 200));
+        });
+      }
+      return res.json();
+    })
+    .then(function(data) {
+      const content = data.choices[0].message.content;
+      let result;
+      try {
+        result = JSON.parse(content);
+      } catch (e) {
+        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          try { result = JSON.parse(jsonMatch[1]); } catch(e2) {}
+        }
+        if (!result) {
+          const firstBrace = content.indexOf('{');
+          const lastBrace = content.lastIndexOf('}');
+          if (firstBrace !== -1 && lastBrace !== -1) {
+            try { result = JSON.parse(content.substring(firstBrace, lastBrace + 1)); } catch(e3) {}
+          }
+        }
+      }
+      if (!result) {
+        result = { name: '识别结果', usage: content.substring(0, 200) };
+      }
+      showRecognizeResult(result);
+    })
+    .catch(function(err) {
+      resultDiv.innerHTML = '<div class="warn-box">识别失败：' + err.message + '<br><br>请检查API Key和模型ID是否正确，网络是否正常。</div>';
+      speak('识别失败，请检查配置');
+    });
   };
   reader.readAsDataURL(file);
 }
-// 模拟药品库 —— 实际使用时替换为真实AI接口
-const MOCK_MEDS = [
-  {
-    name: '阿司匹林肠溶片',
-    dose: '100mg',
-    usage: '口服，每天1次，每次1片',
-    timing: '建议饭后服用，减少胃部刺激',
-    caution: '常见不良反应为胃肠道不适；有出血倾向者慎用；服药期间避免饮酒。',
-    interaction: '与其他抗凝药同服可能增加出血风险，请咨询医生。'
-  },
-  {
-    name: '氨氯地平片',
-    dose: '5mg',
-    usage: '口服，每天1次，每次1片',
-    timing: '每天固定时间服用，饭前饭后均可',
-    caution: '可能引起脚踝水肿、面部潮红；如出现明显不适请及时就医。',
-    interaction: '与葡萄柚汁同服可能影响药效，服药期间避免大量饮用葡萄柚汁。'
-  },
-  {
-    name: '二甲双胍片',
-    dose: '0.5g',
-    usage: '口服，每天2-3次，每次1片',
-    timing: '随餐服用或餐后立即服用，减少胃肠道反应',
-    caution: '常见不良反应为腹泻、恶心；定期监测血糖和肾功能；避免过量饮酒。',
-    interaction: '做造影检查前需提前停药，请告知医生您正在服用此药。'
-  },
-  {
-    name: '阿托伐他汀钙片',
-    dose: '20mg',
-    usage: '口服，每天1次，每次1片',
-    timing: '建议睡前服用，效果更佳',
-    caution: '可能引起肌肉酸痛；定期复查肝功能；如出现不明原因肌肉疼痛请及时就医。',
-    interaction: '避免与葡萄柚汁同服；与某些抗生素、抗真菌药同服需咨询医生。'
-  }
-];
-function showMockResult() {
-  // 随机选一个模拟结果，实际使用时调用真实AI接口
-  const med = MOCK_MEDS[Math.floor(Math.random() * MOCK_MEDS.length)];
+let lastRecognizedMed = null;
+function showRecognizeResult(med) {
+  lastRecognizedMed = med;
   const resultDiv = document.getElementById('scanResult');
-  resultDiv.innerHTML = `
-    <div class="result-card">
-      <h3>${med.name}</h3>
-      <div class="result-row"><span class="result-label">规格：</span>${med.dose}</div>
-      <div class="result-row"><span class="result-label">怎么吃：</span>${med.usage}</div>
-      <div class="result-row"><span class="result-label">什么时候吃：</span>${med.timing}</div>
-      <div class="warn-box">
-        <strong>注意事项：</strong><br>${med.caution}
-      </div>
-      <div class="warn-box" style="margin-top:10px; background:#f0f5ff; border-left-color:#1890ff;">
-        <strong>联用提醒：</strong><br>${med.interaction}
-      </div>
-      <div style="text-align:center; margin-top:16px;">
-        <button class="btn btn-primary" onclick="quickAddPlan('${med.name}','${med.dose}')">
-          一键设为提醒
-        </button>
-      </div>
-    </div>
-  `;
-  speak('识别完成。' + med.name + '，' + med.usage + '。' + med.caution);
+  const name = med.name || '未能识别出药品';
+  const isFailed = name.indexOf('未能识别') !== -1 || name.indexOf('未识别') !== -1;
+  let html = '<div class="result-card">';
+  html += '<h3>' + name + '</h3>';
+  if (!isFailed) {
+    if (med.dose) html += '<div class="result-row"><span class="result-label">规格：</span>' + med.dose + '</div>';
+    if (med.usage) html += '<div class="result-row"><span class="result-label">怎么吃：</span>' + med.usage + '</div>';
+    if (med.timing) html += '<div class="result-row"><span class="result-label">什么时候吃：</span>' + med.timing + '</div>';
+    if (med.caution) {
+      html += '<div class="warn-box"><strong>注意事项：</strong><br>' + med.caution + '</div>';
+    }
+    if (med.interaction && med.interaction.indexOf('无特殊') === -1) {
+      html += '<div class="warn-box" style="margin-top:10px; background:#f0f5ff; border-left-color:#1890ff;"><strong>联用提醒：</strong><br>' + med.interaction + '</div>';
+    }
+    html += '<div style="text-align:center; margin-top:16px;">';
+    html += '<button class="btn btn-primary" onclick="quickAddPlanFromResult()">一键设为提醒</button>';
+    html += '</div>';
+  } else {
+    html += '<div class="warn-box">未能识别出药品信息。<br><br>请确保照片清晰、药盒文字完整可见，然后重新拍摄。</div>';
+  }
+  html += '</div>';
+  resultDiv.innerHTML = html;
+  if (!isFailed) {
+    speak('识别完成。' + name + '。' + (med.usage || '') + '。' + (med.caution || ''));
+  } else {
+    speak('未能识别出药品，请重新拍摄');
+  }
 }
-// 识药结果一键添加为提醒
-function quickAddPlan(name, dose) {
-  document.getElementById('medName').value = name;
-  document.getElementById('medDose').value = dose;
+function quickAddPlanFromResult() {
+  if (!lastRecognizedMed) return;
+  document.getElementById('medName').value = lastRecognizedMed.name || '';
+  document.getElementById('medDose').value = lastRecognizedMed.dose || '';
+  if (lastRecognizedMed.timing) {
+    document.getElementById('medNote').value = lastRecognizedMed.timing;
+  }
   showPage('add');
 }
 // ============================================================
 //  到点提醒：定时检查
 // ============================================================
 let currentReminderId = null;
-let snoozeTimers = {};
 function checkReminders() {
   const now = new Date();
   const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
@@ -712,11 +748,10 @@ function snoozeReminder() {
           showReminder(p);
         }
       }
-    }, 10 * 60 * 1000); // 10分钟
+    }, 10 * 60 * 1000);
   }
   currentReminderId = null;
 }
-// 每30秒检查一次是否到点
 setInterval(checkReminders, 30000);
 // ============================================================
 //  语音播报
@@ -731,69 +766,52 @@ function speak(text) {
     window.speechSynthesis.speak(utter);
   }
 }
-
 // ============================================================
-//  语音输入：按住说话（修复版）
-//  改动说明：
-//  1. 去掉原来的 onclick 切换模式，改为"按下开始、松开停止"
-//  2. 同时绑定鼠标事件（电脑）和触屏事件（手机）
-//  3. 开启 interimResults 实时显示识别结果
-//  4. 完善错误提示，区分权限拒绝、无语音、网络异常
+//  语音输入：按住说话
 // ============================================================
 let recognition = null;
 let isRecording = false;
-
-// 页面加载后自动绑定按钮事件
 (function initVoiceBtn() {
   const btn = document.getElementById('voiceBtn');
   if (!btn) return;
-
-  // —— 按下：开始识别 ——
   btn.addEventListener('mousedown', function (e) {
     e.preventDefault();
     startVoice();
   });
   btn.addEventListener('touchstart', function (e) {
-    e.preventDefault(); // 阻止触发鼠标事件和长按菜单
+    e.preventDefault();
     startVoice();
   }, { passive: false });
-
-  // —— 松开：停止识别 ——
   btn.addEventListener('mouseup', function (e) {
     e.preventDefault();
     stopVoice();
   });
-  btn.addEventListener('mouseleave', stopVoice); // 手指滑出按钮也停止
+  btn.addEventListener('mouseleave', stopVoice);
   btn.addEventListener('touchend', function (e) {
     e.preventDefault();
     stopVoice();
   }, { passive: false });
-  btn.addEventListener('touchcancel', stopVoice); // 系统中断也停止
+  btn.addEventListener('touchcancel', stopVoice);
 })();
-
 function startVoice() {
   const btn = document.getElementById('voiceBtn');
   const resultEl = document.getElementById('voiceResult');
   if (isRecording) return;
-
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
     resultEl.textContent = '当前浏览器不支持语音识别，请用Safari或Chrome打开';
     resultEl.style.color = '#999';
     return;
   }
-
   try {
     recognition = new SR();
   } catch (e) {
     resultEl.textContent = '语音识别启动失败，请重试';
     return;
   }
-
   recognition.lang = 'zh-CN';
-  recognition.interimResults = true;  // 实时返回临时结果
-  recognition.continuous = false;      // 单次识别
-
+  recognition.interimResults = true;
+  recognition.continuous = false;
   recognition.onstart = function () {
     isRecording = true;
     btn.classList.add('recording');
@@ -801,7 +819,6 @@ function startVoice() {
     resultEl.style.color = '#E8652A';
     resultEl.textContent = '请说话...';
   };
-
   recognition.onresult = function (event) {
     let finalText = '';
     let interimText = '';
@@ -815,11 +832,9 @@ function startVoice() {
     const full = (finalText + interimText).trim();
     if (full) {
       resultEl.textContent = '您说：' + full;
-      // 实时解析并填入表单（临时结果也填，边说边填）
       parseVoiceCommand(full);
     }
   };
-
   recognition.onerror = function (event) {
     isRecording = false;
     btn.classList.remove('recording');
@@ -831,60 +846,135 @@ function startVoice() {
     } else if (event.error === 'network') {
       resultEl.textContent = '网络异常，语音识别需要联网';
     } else if (event.error === 'aborted') {
-      // 用户主动松开导致的中止，不提示
       return;
     } else {
       resultEl.textContent = '识别出错，请重试';
     }
   };
-
   recognition.onend = function () {
     isRecording = false;
     btn.classList.remove('recording');
     btn.innerHTML = '按住<br>说话';
   };
-
   try {
     recognition.start();
   } catch (e) {
     resultEl.textContent = '启动失败，请重试';
   }
 }
-
 function stopVoice() {
   if (!isRecording || !recognition) return;
   try {
     recognition.stop();
-  } catch (e) {
-    // 忽略重复停止的报错
-  }
+  } catch (e) {}
 }
-
-// 简单语音指令解析（保留原逻辑不变）
-function parseVoiceCommand(text) {
-  // 提取时间
-  const timeMatch = text.match(/(\d{1,2})[点时:：](\d{1,2})?/);
-  if (timeMatch) {
-    const h = timeMatch[1].padStart(2, '0');
-    const m = (timeMatch[2] || '0').padStart(2, '0');
-    document.getElementById('medTime').value = h + ':' + m;
+// ============================================================
+//  语音指令解析
+// ============================================================
+const DRUG_NAMES = [
+  '阿司匹林肠溶片', '阿司匹林',
+  '氨氯地平片', '氨氯地平',
+  '二甲双胍片', '二甲双胍',
+  '阿托伐他汀钙片', '阿托伐他汀',
+  '硝苯地平缓释片', '硝苯地平',
+  '布洛芬缓释胶囊', '布洛芬',
+  '降压药', '降糖药', '降脂药',
+  '感冒药', '消炎药', '止痛药',
+  '维生素', '钙片', '鱼油'
+];
+function chineseToNum(str) {
+  const map = { '零':0, '一':1, '二':2, '两':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9 };
+  if (!str) return 0;
+  if (str === '十') return 10;
+  if (/^十[一二三四五六七八九]$/.test(str)) return 10 + map[str[1]];
+  if (/^[二三四五六七八九]十$/.test(str)) return map[str[0]] * 10;
+  if (/^[二三四五六七八九]十[一二三四五六七八九]$/.test(str)) return map[str[0]] * 10 + map[str[2]];
+  if (str.length === 1 && map[str] !== undefined) return map[str];
+  return parseInt(str) || 0;
+}
+function parseTime(text) {
+  let period = '';
+  if (/早上|早晨|上午/.test(text)) period = 'morning';
+  else if (/下午|午后/.test(text)) period = 'afternoon';
+  else if (/晚上|傍晚|夜里|夜晚/.test(text)) period = 'evening';
+  else if (/中午|正午/.test(text)) period = 'noon';
+  const cnRegex = /([零一二三四五六七八九十两]{1,3})[点时]([零一二三四五六七八九十两半]{1,3})?(?:分)?/;
+  const cnMatch = text.match(cnRegex);
+  if (cnMatch) {
+    let h = chineseToNum(cnMatch[1]);
+    let m = 0;
+    if (cnMatch[2]) {
+      m = (cnMatch[2] === '半') ? 30 : chineseToNum(cnMatch[2]);
+    }
+    if (period === 'evening' && h < 12) h += 12;
+    else if (period === 'afternoon' && h < 12) h += 12;
+    else if (period === 'morning' && h === 12) h = 0;
+    return h.toString().padStart(2,'0') + ':' + m.toString().padStart(2,'0');
   }
-  // 提取剂量
-  const doseMatch = text.match(/(\d+)\s*(片|粒|毫升|ml|mg|克)/);
-  if (doseMatch) {
-    document.getElementById('medDose').value = doseMatch[1] + doseMatch[2];
+  const numRegex = /(\d{1,2})[点时:：](\d{1,2})?/;
+  const numMatch = text.match(numRegex);
+  if (numMatch) {
+    let h = parseInt(numMatch[1]);
+    let m = numMatch[2] ? parseInt(numMatch[2]) : 0;
+    if (period === 'evening' && h < 12) h += 12;
+    else if (period === 'afternoon' && h < 12) h += 12;
+    return h.toString().padStart(2,'0') + ':' + m.toString().padStart(2,'0');
   }
-  // 药名：去掉时间和剂量后的剩余部分作为药名（简化处理）
+  if (period === 'morning') return '08:00';
+  if (period === 'noon') return '12:00';
+  if (period === 'afternoon') return '15:00';
+  if (period === 'evening') return '19:00';
+  return null;
+}
+function parseDose(text) {
+  const units = '片|粒|颗|毫升|亳升|mg|毫克|克|袋|支|滴|丸';
+  const cnRegex = new RegExp('([零一二三四五六七八九十两]{1,3})\\s*(' + units + ')');
+  const cnMatch = text.match(cnRegex);
+  if (cnMatch) {
+    const num = chineseToNum(cnMatch[1]);
+    let unit = cnMatch[2];
+    if (unit === '亳升') unit = '毫升';
+    return num + unit;
+  }
+  const numRegex = new RegExp('(\\d+)\\s*(' + units + ')');
+  const numMatch = text.match(numRegex);
+  if (numMatch) return numMatch[1] + numMatch[2];
+  return null;
+}
+function parseDrugName(text) {
+  for (const name of DRUG_NAMES) {
+    if (text.includes(name)) return name;
+  }
   let name = text
-    .replace(/每天|早上|晚上|中午|服用|吃|喝|提醒我|帮我设?置?/g, '')
+    .replace(/每天|早上|晚上|中午|下午|早晨|上午|傍晚|夜里|夜晚|正午/g, '')
+    .replace(/服用|吃|喝|提醒我|帮我设?置?|记一下|记个|设个|设置|要吃|需要/g, '')
+    .replace(/饭后|饭前|空腹|睡前|随餐|餐中/g, '')
+    .replace(/[零一二三四五六七八九十两半]{1,3}[点时][零一二三四五六七八九十两半]{0,3}分?/g, '')
     .replace(/\d{1,2}[点时:：]\d{0,2}/g, '')
-    .replace(/\d+\s*(片|粒|毫升|ml|mg|克)/g, '')
+    .replace(/[零一二三四五六七八九十两]{1,3}\s*(片|粒|颗|毫升|毫克|克|袋|支|丸)/g, '')
+    .replace(/\d+\s*(片|粒|颗|毫升|mg|毫克|克|袋|支|丸)/g, '')
+    .replace(/[，。！？、\s]/g, '')
     .trim();
-  if (name) {
-    document.getElementById('medName').value = name;
-  }
+  return name || null;
 }
-
+function parseNote(text) {
+  if (/饭后/.test(text)) return '饭后服用';
+  if (/饭前/.test(text)) return '饭前服用';
+  if (/空腹/.test(text)) return '空腹服用';
+  if (/睡前/.test(text)) return '睡前服用';
+  if (/随餐|餐中/.test(text)) return '随餐服用';
+  return null;
+}
+function parseVoiceCommand(text) {
+  const time = parseTime(text);
+  if (time) document.getElementById('medTime').value = time;
+  const dose = parseDose(text);
+  if (dose) document.getElementById('medDose').value = dose;
+  const name = parseDrugName(text);
+  if (name) document.getElementById('medName').value = name;
+  const note = parseNote(text);
+  if (note) document.getElementById('medNote').value = note;
+}
 // ============================================================
 //  初始化
 // ============================================================

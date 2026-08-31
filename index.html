@@ -407,7 +407,7 @@
     <div id="todayList"></div>
   </div>
   <button class="btn-big btn-orange" onclick="showPage('scan')">
-    拍药识药
+    拍照识药
     <span class="sub">拍药盒，告诉您怎么吃</span>
   </button>
   <button class="btn-big btn-green" onclick="showPage('add')">
@@ -785,7 +785,7 @@ async function checkInteraction() {
   const resultDiv = document.getElementById('interactionResult');
   if (!input) { alert('请输入药品名称'); return; }
   resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在分析联用禁忌，请稍候...</div>';
-  const prompt = '用户输入可能是药品列表，也可能是自然语言提问（如：阿司匹林和布洛芬可以一起吃吗）。\n用户输入：' + input + '\n\n请先从用户输入中提取所有药品名称，然后分析这些药物之间的联用禁忌和相互作用。\n（注：药品名称可能用逗号、空格、顿号、和、与或连续书写分隔，请自行识别）\n\n请以严格JSON格式返回：\n{\n  "hasConflict": true或false,\n  "conflicts": [\n    {"pair": "药A+药B", "risk": "高/中/低", "description": "冲突原因和后果"}\n  ],\n  "warnings": "通用注意事项",\n  "suggestion": "给用户的建议"\n}\n\n要求：\n1. 只返回JSON，不要其他文字\n2. 基于医学常识，客观准确\n3. 语言通俗易懂，适合老年人\n4. 没有冲突时hasConflict为false，conflicts为空数组';
+  const prompt = '用户输入可能是药品列表，也可能是自然语言提问（如：阿司匹林和布洛芬可以一起吃吗）。\n用户输入：' + input + '\n\n请先从用户输入中提取所有药品名称，然后分析这些药物之间的联用禁忌和相互作用。\n（注：药品名称可能用逗号、空格、顿号、和、与或连续书写分隔，请自行识别）\n\n请以严格JSON格式返回：\n{\n  "extractedDrugs": "提取出的所有药品名称，用逗号分隔",\n  "hasConflict": true或false,\n  "conflicts": [\n    {"pair": "药A+药B", "risk": "高/中/低", "description": "冲突原因和后果"}\n  ],\n  "warnings": "通用注意事项",\n  "suggestion": "给用户的建议"\n}\n\n要求：\n1. 只返回JSON，不要其他文字\n2. 基于医学常识，客观准确\n3. 语言通俗易懂，适合老年人\n4. 没有冲突时hasConflict为false，conflicts为空数组';
   try {
     const res = await fetch(AI_CONFIG.API_URL, {
       method: 'POST',
@@ -810,6 +810,10 @@ async function checkInteraction() {
       }
     }
     if (!result) throw new Error('解析失败');
+    // 把大模型提取出的药品名称用逗号隔开填回输入框
+    if (result.extractedDrugs) {
+      document.getElementById('interactionInput').value = result.extractedDrugs;
+    }
     let html = '<div class="result-card">';
     if (result.hasConflict && result.conflicts && result.conflicts.length > 0) {
       html += '<h3 style="color:#ff4d4f;">⚠️ 发现联用禁忌</h3>';

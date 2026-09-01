@@ -776,7 +776,7 @@ async function checkInteraction() {
   }
   if (!input) { alert('请输入药品名称或按住说话'); return; }
   resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在分析联用禁忌，请稍候...</div>';
-  const prompt = '用户输入可能是药品列表，也可能是自然语言提问（如：阿司匹林和布洛芬可以一起吃吗）。\n用户输入：' + input + '\n\n请先从用户输入中提取所有药品名称，然后分析这些药物之间的联用禁忌和相互作用。\n（注：药品名称可能用逗号、空格、顿号、和、与或连续书写分隔，请自行识别）\n\n请以严格JSON格式返回：\n{\n  "extractedDrugs": "提取出的所有药品名称，用逗号分隔",\n  "hasConflict": true或false,\n  "conflicts": [\n    {"pair": "药A+药B", "risk": "高/中/低", "description": "冲突原因和后果"}\n  ],\n  "warnings": "通用注意事项",\n  "suggestion": "给用户的建议"\n}\n\n要求：\n1. 只返回JSON，不要其他文字\n2. 基于医学常识，客观准确\n3. 语言通俗易懂，适合老年人\n4. 没有冲突时hasConflict为false，conflicts为空数组\n5. warnings和suggestion字段中必须明确提到具体的药品名称，不要用「这些药物」「它们」等笼统表述';
+  const prompt = '用户输入可能是药品列表，也可能是自然语言提问（如：阿司匹林和布洛芬可以一起吃吗）。\n用户输入：' + input + '\n\n请先从用户输入中提取所有药品名称，然后分析这些药物之间的联用禁忌和相互作用。\n（注：药品名称可能用逗号、空格、顿号、和、与或连续书写分隔，请自行识别）\n\n请以严格JSON格式返回：\n{\n  "extractedDrugs": "提取出的所有药品名称，用逗号分隔",\n  "hasConflict": true或false,\n  "conflicts": [\n    {"pair": "药A+药B", "risk": "高/中/低", "description": "冲突原因和后果"}\n  ],\n  "warnings": "通用注意事项",\n  "suggestion": "给用户的建议"\n}\n\n要求：\n1. 只返回JSON，不要其他文字\n2. 基于医学常识，客观准确\n3. 语言通俗易懂，适合老年人\n4. 没有冲突时hasConflict为false，conflicts为空数组\n5. warnings和suggestion字段中必须明确提到具体的药品名称，不要用「这些药物」「它们」等笼统表述\n6. 如果无法从用户输入中识别出任何药品名称，extractedDrugs填空字符串，hasConflict为false，conflicts为空数组，suggestion填"未能识别出药品名称，请重新输入药品名称"\n7. 如果只识别出一种药品，extractedDrugs填该药品名，hasConflict为false，conflicts为空数组，suggestion填"只识别到一种药品，联用禁忌分析需要至少两种药品，请补充其他药品名称"';
   try {
     const res = await fetch(AI_CONFIG.API_URL, {
       method: 'POST',
@@ -784,7 +784,7 @@ async function checkInteraction() {
       body: JSON.stringify({
         model: AI_CONFIG.TEXT_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 1000,
+        max_tokens: 1200,
         temperature: 0.3
       })
     });
@@ -801,13 +801,43 @@ async function checkInteraction() {
       }
     }
     if (!result) throw new Error('解析失败');
-    // 把大模型提取出的药品名称用逗号隔开填回输入框
-    if (result.extractedDrugs) {
-      document.getElementById('interactionInput').value = result.extractedDrugs;
+
+    const drugs = (result.extractedDrugs || '').trim();
+    const drugList = drugs ? drugs.split(/[,，、\s]+/).filter(Boolean) : [];
+
+    // ===== 药品名称校验：未识别或只有一种时给友好提示 =====
+    if (!drugs || drugList.length === 0) {
+      resultDiv.innerHTML = '<div class="result-card">' +
+        '<h3 style="color:#fa8c16;">⚠️ 未能识别药品</h3>' +
+        '<div class="result-row">没有从您的输入中识别出药品名称。</div>' +
+        '<div class="warn-box" style="margin-top:10px;"><strong>请重新输入：</strong><br>' +
+        '1. 直接输入药品名称，用逗号隔开，例如：阿司匹林,布洛芬<br>' +
+        '2. 或用自然语言提问，例如：阿司匹林和布洛芬可以一起吃吗<br>' +
+        '3. 也可以按住下方语音按钮，直接说出药品名称</div>' +
+        '</div>';
+      speak('未能识别出药品名称，请重新输入药品名称，用逗号隔开');
+      return;
     }
+    if (drugList.length < 2) {
+      resultDiv.innerHTML = '<div class="result-card">' +
+        '<h3 style="color:#fa8c16;">⚠️ 药品数量不足</h3>' +
+        '<div class="result-row">只识别到：<strong>' + drugs + '</strong></div>' +
+        '<div class="warn-box" style="margin-top:10px;"><strong>联用禁忌分析需要至少两种药品。</strong><br>' +
+        '请补充其他药品名称，例如：' + drugs + ',阿莫西林<br>' +
+        '或按住下方语音按钮，直接说出要一起吃的几种药</div>' +
+        '</div>';
+      speak('只识别到' + drugs + '一种药，联用禁忌分析需要至少两种药品，请补充其他药品名称');
+      return;
+    }
+
+    // 把识别出的药品名称填回输入框
+    document.getElementById('interactionInput').value = drugs;
+
+    // ===== 正常展示分析结果 =====
     let html = '<div class="result-card">';
+    html += '<div class="result-row" style="border-bottom:2px solid #f0f0f0; padding-bottom:10px;"><span class="result-label">分析药品：</span><strong>' + drugs + '</strong></div>';
     if (result.hasConflict && result.conflicts && result.conflicts.length > 0) {
-      html += '<h3 style="color:#ff4d4f;">⚠️ 发现联用禁忌</h3>';
+      html += '<h3 style="color:#ff4d4f; margin-top:12px;">⚠️ 发现联用禁忌</h3>';
       for (const c of result.conflicts) {
         const riskColor = c.risk === '高' ? '#ff4d4f' : (c.risk === '中' ? '#fa8c16' : '#faad14');
         html += '<div class="warn-box" style="margin-top:10px; border-left-color:' + riskColor + ';">';
@@ -815,9 +845,8 @@ async function checkInteraction() {
         html += '</div>';
       }
     } else {
-      html += '<h3 style="color:#52C41A;">✅ 未发现明显联用禁忌</h3>';
-      const drugNames = result.extractedDrugs || '这些药物';
-      html += '<div class="result-row"><strong>' + drugNames + '</strong> 之间没有已知的严重相互作用，但仍建议遵医嘱服用。</div>';
+      html += '<h3 style="color:#52C41A; margin-top:12px;">✅ 未发现明显联用禁忌</h3>';
+      html += '<div class="result-row"><strong>' + drugs + '</strong> 之间没有已知的严重相互作用，但仍建议遵医嘱服用。</div>';
     }
     if (result.warnings) {
       html += '<div class="warn-box" style="margin-top:12px; background:#f0f5ff; border-left-color:#1890ff;"><strong>注意事项：</strong><br>' + result.warnings + '</div>';
@@ -825,12 +854,43 @@ async function checkInteraction() {
     if (result.suggestion) {
       html += '<div class="result-row"><span class="result-label">建议：</span>' + result.suggestion + '</div>';
     }
+    html += '<div style="text-align:center; margin-top:14px;">';
+    html += '<button class="btn btn-secondary" onclick="speakInteractionResult()">🔊 重新播报</button>';
+    html += '</div>';
     html += '</div>';
     resultDiv.innerHTML = html;
-    speak('联用禁忌分析完成。' + (result.hasConflict ? '发现联用禁忌，请注意查看。' : '未发现明显联用禁忌。'));
+
+    // 保存结果供重新播报用
+    lastInteractionResult = result;
+    speakInteractionResult();
   } catch (e) {
     resultDiv.innerHTML = '<div class="warn-box">分析失败：' + e.message + '<br><br>请检查网络是否正常。</div>';
   }
+}
+
+// 联用禁忌分析结果的完整语音播报
+let lastInteractionResult = null;
+function speakInteractionResult() {
+  if (!lastInteractionResult) return;
+  const r = lastInteractionResult;
+  const drugs = (r.extractedDrugs || '').trim();
+  let text = '联用禁忌分析完成。分析药品：' + drugs + '。';
+  if (r.hasConflict && r.conflicts && r.conflicts.length > 0) {
+    text += '发现' + r.conflicts.length + '处联用禁忌。';
+    for (let i = 0; i < Math.min(r.conflicts.length, 2); i++) {
+      const c = r.conflicts[i];
+      text += c.pair + '，风险' + c.risk + '。' + c.description + '。';
+    }
+    if (r.conflicts.length > 2) {
+      text += '其余禁忌请查看屏幕。';
+    }
+  } else {
+    text += '这几种药之间没有发现明显的联用禁忌，但仍建议遵医嘱服用。';
+  }
+  if (r.suggestion) {
+    text += '建议：' + r.suggestion;
+  }
+  speak(text);
 }
 
 // ============================================================

@@ -53,18 +53,18 @@ body {
 }
 .today-item:last-child { border-bottom:none; }
 .today-item.done { color:#aaa; text-decoration:line-through; }
-.today-item .time { font-weight:700; color:#E8652A; margin-right:16px; flex-shrink:0; }
+.today-item .time { font-weight:700; color:#E8652A; margin-right:12px; flex-shrink:0; font-size:20px; }
 .today-item.done .time { color:#aaa; }
 .today-actions { display:flex; gap:8px; align-items:center; flex-shrink:0; }
 .status-btn {
-  font-size:18px; padding:6px 16px; border-radius:8px; border:none;
+  font-size:16px; padding:4px 10px; border-radius:8px; border:none;
   cursor:pointer; font-weight:600;
 }
 .status-btn.status-pending { background:#FFF2E8; color:#E8652A; }
 .status-btn.status-done { background:#f6ffed; color:#52C41A; }
 .delete-btn {
-  font-size:17px; padding:6px 14px; border-radius:8px; border:none;
-  background:#fff1f0; color:#ff4d4f; cursor:pointer; font-weight:600;
+  font-size:18px; padding:3px 8px; border-radius:8px; border:none;
+  background:#fff1f0; color:#ff4d4f; cursor:pointer; font-weight:700; line-height:1.2;
 }
 .delete-btn:active { background:#ffccc7; }
 .today-med-text { flex:1; display:flex; align-items:center; overflow:hidden; font-size:22px; font-weight:600; color:#333; }
@@ -378,7 +378,7 @@ function renderToday() {
       </div>
       <div class="today-actions">
         <button class="status-btn ${taken ? 'status-done' : 'status-pending'}" onclick="markTaken(${p.id}, ${taken ? 'false' : 'true'})">${taken ? '已吃' : '待吃'}</button>
-        <button class="delete-btn" onclick="deletePlan(${p.id})">删除</button>
+        <button class="delete-btn" onclick="deletePlan(${p.id})">×</button>
       </div>
     </div>`;
   }).join('');
@@ -980,7 +980,7 @@ function startVoice() {
   }
   recognition.lang = 'zh-CN';
   recognition.interimResults = true;
-  recognition.continuous = false;
+  recognition.continuous = true;
   recognition.onstart = function() {
     isRecording = true;
     btn.classList.add('recording');
@@ -998,7 +998,6 @@ function startVoice() {
     if (full) {
       resultEl.textContent = '您说：' + full;
       lastVoiceText = full;
-      if (finalText && !voiceParsed) { voiceParsed = true; parseVoiceCommand(finalText); }
     }
   };
   recognition.onerror = function(event) {
@@ -1036,10 +1035,10 @@ async function parseVoiceCommand(text) {
     const data = await res.json();
     const result = parseJSONSafe(data.choices[0].message.content);
     if (result) {
-      if (result.name) document.getElementById('medName').value = result.name;
-      if (result.dose) document.getElementById('medDose').value = result.dose;
-      if (result.time) document.getElementById('medTime').value = result.time;
-      if (result.note) document.getElementById('medNote').value = result.note;
+      document.getElementById('medName').value = result.name || '';
+      document.getElementById('medDose').value = result.dose || '';
+      document.getElementById('medTime').value = result.time || '';
+      document.getElementById('medNote').value = result.note || '';
       resultEl.textContent = '您说：' + text + '（已解析）';
     }
   } catch (e) {

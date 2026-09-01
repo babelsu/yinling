@@ -406,32 +406,39 @@
     <button class="back-btn" onclick="showPage('home')">← 返回</button>
     <span class="title">设提醒</span>
   </div>
-  <div class="form-group">
-    <label>药品名称</label>
-    <input type="text" id="medName" placeholder="例如：阿司匹林">
+  <!-- 语音填写卡片（优先） -->
+  <div style="background:#fff; border-radius:16px; padding:24px 20px; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,0.06); text-align:center;">
+    <div style="font-size:21px; font-weight:700; color:#333; margin-bottom:6px;">🎤 语音填写</div>
+    <p style="font-size:17px; color:#999; margin-bottom:4px;">按住按钮说话，自动填好药品信息</p>
+    <p style="font-size:16px; color:#bbb; margin-bottom:16px;">例如：每天早上八点吃阿司匹林一片</p>
+    <button class="voice-btn" id="voiceBtn" style="width:90px; height:90px; font-size:18px;">按住<br>说话</button>
+    <p id="voiceResult" style="font-size:19px; color:#E8652A; margin-top:14px; min-height:28px;"></p>
   </div>
-  <div class="form-group">
-    <label>服用剂量</label>
-    <input type="text" id="medDose" placeholder="例如：1片 / 10毫升">
-  </div>
-  <div class="form-group">
-    <label>服用时间</label>
-    <div class="time-row">
-      <input type="time" id="medTime" value="08:00">
+  <!-- 手动填写/确认卡片 -->
+  <div style="background:#fff; border-radius:16px; padding:20px; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+    <div style="font-size:21px; font-weight:700; color:#333; margin-bottom:16px;">📝 确认信息</div>
+    <div class="form-group">
+      <label>药品</label>
+      <input type="text" id="medName" placeholder="例如：阿司匹林">
     </div>
-  </div>
-  <div class="form-group">
-    <label>服用说明（可选）</label>
-    <input type="text" id="medNote" placeholder="例如：饭后服用">
+    <div class="form-group">
+      <label>剂量</label>
+      <input type="text" id="medDose" placeholder="例如：1片">
+    </div>
+    <div class="form-group">
+      <label>时间</label>
+      <div class="time-row">
+        <input type="time" id="medTime" value="08:00">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:0;">
+      <label>备注（可选）</label>
+      <input type="text" id="medNote" placeholder="例如：饭后服用">
+    </div>
   </div>
   <button class="btn-big btn-green" onclick="savePlan()">
     保存提醒
   </button>
-  <div style="margin-top:20px; text-align:center;">
-    <button class="voice-btn" id="voiceBtn">按住<br>说话</button>
-    <p class="voice-tip">按住说话，自动填写药品信息</p>
-    <p id="voiceResult" style="font-size:19px; color:#E8652A; margin-top:10px;"></p>
-  </div>
 </div>
 <!-- ============ 联用禁忌 ============ -->
 <div id="page-interaction" class="page">
@@ -728,8 +735,7 @@ function showRecognizeResult(med) {
 
     // ===== 操作按钮 =====
     html += '<div style="text-align:center; margin-top:18px;">';
-    html += '<button class="btn btn-secondary" onclick="speakResult()" style="margin-right:8px;">🔊 重新播报</button>';
-    html += '<button class="btn btn-primary" onclick="quickAddPlanFromResult()">一键设为提醒</button>';
+    html += '<button class="btn btn-secondary" onclick="speakResult()">🔊 重新播报</button>';
     html += '</div>';
     html += '<p style="text-align:center; color:#aaa; font-size:15px; margin-top:12px;">以上信息仅供参考，具体请以药品说明书或医嘱为准</p>';
   } else {
@@ -755,16 +761,6 @@ function speakResult() {
   if (med.contraindication) text += '。注意：' + med.contraindication + '禁用';
   speak(text);
 }
-function quickAddPlanFromResult() {
-  if (!lastRecognizedMed) return;
-  document.getElementById('medName').value = lastRecognizedMed.name || '';
-  document.getElementById('medDose').value = lastRecognizedMed.dose || '';
-  if (lastRecognizedMed.timing) {
-    document.getElementById('medNote').value = lastRecognizedMed.timing;
-  }
-  showPage('add');
-}
-
 // ============================================================
 //  联用禁忌检查
 // ============================================================

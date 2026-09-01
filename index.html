@@ -67,8 +67,9 @@ body {
   background:#fff1f0; color:#ff4d4f; cursor:pointer; font-weight:600;
 }
 .delete-btn:active { background:#ffccc7; }
-.today-med-text { flex:1; font-size:22px; font-weight:600; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.today-dose-small { font-size:18px; color:#888; font-weight:400; margin-left:6px; }
+.today-med-text { flex:1; display:flex; align-items:center; overflow:hidden; font-size:22px; font-weight:600; color:#333; }
+.today-med-text .med-name { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.today-dose-small { font-size:18px; color:#888; font-weight:400; margin-left:8px; flex-shrink:0; }
 .today-item.done .today-med-text { color:#aaa; }
 .empty-tip { text-align:center; color:#999; font-size:20px; padding:30px 0; }
 
@@ -371,7 +372,10 @@ function renderToday() {
     const doseHtml = p.dose ? `<span class="today-dose-small">${p.dose}</span>` : '';
     return `<div class="today-item ${taken ? 'done' : ''}">
       <span class="time">${p.time}</span>
-      <div class="today-med-text">${p.name}${doseHtml}</div>
+      <div class="today-med-text">
+        <span class="med-name">${p.name}</span>
+        ${doseHtml}
+      </div>
       <div class="today-actions">
         <button class="status-btn ${taken ? 'status-done' : 'status-pending'}" onclick="markTaken(${p.id}, ${taken ? 'false' : 'true'})">${taken ? '已吃' : '待吃'}</button>
         <button class="delete-btn" onclick="deletePlan(${p.id})">删除</button>

@@ -323,11 +323,11 @@ body {
 
 <script>
 const AI_CONFIG = {
-  API_KEY: 'sk-ws-H.EXXRDPP.dWRc.MEMCIGAvANAxWfwnXowXv1uwOkZgtGlC9eC_dPGoK51aovetAh8BYkTD_69itTiAc3RaxRDLNkB1DgNubzaeiEPzLwxH',
-  VISION_MODEL: 'qwen-vl-plus',
-  TEXT_MODEL: 'qwen-turbo',
-  VOICE_MODEL: 'qwen-turbo',
-  API_URL: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+  API_KEY: 'fa50168170174c708c0ee1f810abd65d.KLKJq9Tp33HYVemv',
+  VISION_MODEL: 'glm-4v-plus',
+  TEXT_MODEL: 'glm-4-plus',
+  VOICE_MODEL: 'glm-4-air',
+  API_URL: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
 };
 
 const STORAGE_KEY = 'yinling_plans';
@@ -387,7 +387,7 @@ function renderToday() {
 // 时间已过的话从明天开始提醒，避免刚设完就弹
 function savePlan() {
   const name = document.getElementById('medName').value.trim();
-  const dose = document.getElementById('medDose').value.trim();
+  const dose = normalizeDose(document.getElementById('medDose').value.trim());
   const time = document.getElementById('medTime').value;
   const note = document.getElementById('medNote').value.trim();
   if (!name) { alert('请填写药品名称'); return; }
@@ -1022,6 +1022,21 @@ function stopVoice() {
     try { recognition.stop(); } catch (e) {}
   }, 300);
 }
+// 剂量标准化：中文数字转阿拉伯数字，统一显示格式
+function normalizeDose(dose) {
+  if (!dose) return '';
+  let result = String(dose).trim();
+  const map = { '一':'1', '二':'2', '两':'2', '三':'3', '四':'4', '五':'5', '六':'6', '七':'7', '八':'8', '九':'9' };
+  // 十二、十五 → 12、15
+  result = result.replace(/十([一二三四五六七八九])/g, function(m, c) { return '1' + (map[c] || c); });
+  // 二十、二十五 → 20、25
+  result = result.replace(/([一二三四五六七八九])十([一二三四五六七八九])?/g, function(m, a, b) { return (map[a] || a) + (b ? (map[b] || b) : '0'); });
+  // 单独的"十" → 10
+  result = result.replace(/十/g, '10');
+  // 剩余单个中文数字
+  for (const k in map) result = result.replace(new RegExp(k, 'g'), map[k]);
+  return result;
+}
 
 async function parseVoiceCommand(text) {
   const resultEl = document.getElementById('voiceResult');
@@ -1038,7 +1053,7 @@ async function parseVoiceCommand(text) {
     const result = parseJSONSafe(data.choices[0].message.content);
     if (result) {
       document.getElementById('medName').value = result.name || '';
-      document.getElementById('medDose').value = result.dose || '';
+      document.getElementById('medDose').value = normalizeDose(result.dose);
       document.getElementById('medTime').value = result.time || '';
       document.getElementById('medNote').value = result.note || '';
       resultEl.textContent = '您说：' + text + '（已解析）';

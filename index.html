@@ -492,6 +492,18 @@ function loadPlans() {
 }
 function savePlans(plans) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(plans));
+  syncPlansToSW();
+}
+// 同步用药计划到 Service Worker（后台提醒用）
+function syncPlansToSW() {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    try {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'sync-plans',
+        plans: loadPlans()
+      });
+    } catch(e) {}
+  }
 }
 // ============================================================
 //  页面切换
@@ -663,6 +675,9 @@ let lastRecognizedMed = null;
 // 把字段内容中的[常识参考]前缀转成视觉标签
 function formatField(text) {
   if (!text) return '';
+  if (typeof text !== 'string') {
+    try { text = Array.isArray(text) ? text.join('；') : JSON.stringify(text); } catch(e) { text = String(text); }
+  }
   return text.replace(/\[常识参考\]/g, '<span style="display:inline-block; background:#e6f4ff; color:#1890ff; font-size:15px; padding:2px 8px; border-radius:6px; margin-right:6px; vertical-align:middle;">常识参考</span>');
 }
 function showRecognizeResult(med) {
@@ -873,21 +888,38 @@ function stopInteractionVoice() {
   try { interactionRecognition.stop(); } catch(e) {}
 }
 // ============================================================
-//  到点提醒：定时检查
+//  到点提醒：页面内弹窗 + Service Worker 后台系统通知
 // ============================================================
 let currentReminderId = null;
 let reminderTimer = null;
+const originalTitle = '小药叮';
+let titleFlashTimer = null;
 
-// 检查提醒：用时间戳比较，错过的也能补弹（解决后台节流跳过时间点的问题）
+// 标题闪烁（页面在后台时，用户切到其他标签也能在标题栏看到提醒）
+function startTitleFlash() {
+  if (titleFlashTimer) return;
+  let show = true;
+  titleFlashTimer = setInterval(() => {
+    document.title = show ? '⏰该吃药了 - 小药叮' : originalTitle;
+    show = !show;
+  }, 1000);
+}
+function stopTitleFlash() {
+  if (titleFlashTimer) {
+    clearInterval(titleFlashTimer);
+    titleFlashTimer = null;
+  }
+  document.title = originalTitle;
+}
+
+// 检查提醒：用时间戳比较，错过的也能补弹
 function checkReminders() {
   const now = new Date();
   const today = now.toDateString();
   const plans = loadPlans();
   for (const p of plans) {
-    // 计算今天该计划的时间戳
     const parts = p.time.split(':');
     const planTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(parts[0]), parseInt(parts[1]), 0, 0);
-    // 计划时间已到（包括错过的）且今天没吃、没提醒过 → 弹
     if (planTime <= now) {
       const alreadyTaken = p.takenDates && p.takenDates.includes(today);
       const alreadyReminded = p.lastReminded === today;
@@ -895,13 +927,13 @@ function checkReminders() {
         p.lastReminded = today;
         savePlans(plans);
         showReminder(p);
-        return; // 一次只弹一个
+        return;
       }
     }
   }
 }
 
-// 用 setTimeout 递归代替 setInterval，每次校准到下一个整分钟（更精准，不累积误差）
+// 递归 setTimeout，校准到整分钟
 function scheduleNextCheck() {
   const now = new Date();
   const nextMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes() + 1, 0, 0);
@@ -912,31 +944,142 @@ function scheduleNextCheck() {
   }, delay);
 }
 
-// 页面从后台切回前台时，立即补检一次（解决后台定时器暂停的问题）
+// 多触发点补检：页面任何方式重新激活都立即检查
 document.addEventListener('visibilitychange', function() {
-  if (!document.hidden) {
-    checkReminders();
-  }
+  if (!document.hidden) { checkReminders(); syncPlansToSW(); }
 });
+window.addEventListener('focus', function() { checkReminders(); syncPlansToSW(); });
+window.addEventListener('pageshow', function() { checkReminders(); syncPlansToSW(); });
+window.addEventListener('online', function() { checkReminders(); });
 
-// 页面加载时请求系统通知权限（后台时通过系统通知提醒）
+// 请求系统通知权限
 if ('Notification' in window && Notification.permission === 'default') {
   Notification.requestPermission();
 }
+
+// ============================================================
+//  Service Worker：后台定时检查 + 系统通知（内嵌单文件版）
+// ============================================================
+const SW_CODE = `
+let medicationPlans = [];
+let checkTimer = null;
+let pageUrl = './';
+self.addEventListener('install', (event) => { self.skipWaiting(); });
+self.addEventListener('activate', (event) => { event.waitUntil(self.clients.claim()); });
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if (event.source && event.source.url) { pageUrl = event.source.url; }
+  if (data.type === 'sync-plans') {
+    medicationPlans = data.plans || [];
+    scheduleNextCheck();
+  }
+});
+function scheduleNextCheck() {
+  if (checkTimer) clearTimeout(checkTimer);
+  const now = new Date();
+  const nextMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes() + 1, 0, 0);
+  const delay = Math.max(nextMinute - now, 1000);
+  checkTimer = setTimeout(() => { checkReminders(); scheduleNextCheck(); }, delay);
+}
+function checkReminders() {
+  const now = new Date();
+  const today = now.toDateString();
+  let changed = false;
+  for (const p of medicationPlans) {
+    if (!p.time) continue;
+    const parts = p.time.split(':');
+    const planTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(parts[0]), parseInt(parts[1]), 0, 0);
+    if (planTime <= now) {
+      const alreadyTaken = p.takenDates && p.takenDates.includes(today);
+      const alreadyReminded = p.lastReminded === today;
+      if (!alreadyTaken && !alreadyReminded) {
+        p.lastReminded = today;
+        changed = true;
+        showMedicationNotification(p);
+        break;
+      }
+    }
+  }
+  if (changed) {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+      clients.forEach(c => c.postMessage({ type: 'sync-plans', plans: medicationPlans }));
+    });
+  }
+}
+function showMedicationNotification(plan) {
+  const title = '⏰ 小药叮 - 该吃药啦';
+  const body = plan.name + (plan.dose ? ' ' + plan.dose : '') + (plan.note ? '（' + plan.note + '）' : '');
+  const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="80">💊</text></svg>');
+  self.registration.showNotification(title, {
+    body: body, icon: icon, badge: icon,
+    tag: 'medication-' + plan.id, requireInteraction: true, silent: false,
+    data: { planId: plan.id, planName: plan.name }
+  });
+}
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const data = event.notification.data;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+      if (clients.length > 0) {
+        clients[0].focus();
+        clients[0].postMessage({ type: 'notification-click', planId: data.planId });
+      } else {
+        return self.clients.openWindow(pageUrl);
+      }
+    })
+  );
+});
+scheduleNextCheck();
+`;
+
+if ('serviceWorker' in navigator) {
+  try {
+    const swBlob = new Blob([SW_CODE], { type: 'application/javascript' });
+    const swUrl = URL.createObjectURL(swBlob);
+    navigator.serviceWorker.register(swUrl).then(function(reg) {
+      if (navigator.serviceWorker.controller) {
+        syncPlansToSW();
+      }
+      navigator.serviceWorker.addEventListener('controllerchange', function() {
+        syncPlansToSW();
+      });
+    }).catch(function(err) {
+      console.warn('Service Worker 注册失败（本地文件打开时不支持，需通过服务器访问）:', err);
+    });
+  } catch(e) {
+    console.warn('Service Worker 初始化失败:', e);
+  }
+
+  // 监听 SW 发来的消息
+  navigator.serviceWorker.addEventListener('message', function(event) {
+    const data = event.data;
+    if (data.type === 'sync-plans') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data.plans));
+      renderToday();
+    } else if (data.type === 'notification-click') {
+      markTaken(data.planId, true);
+    }
+  });
+}
+
+// 页面内提醒弹窗（前台时用）
 function showReminder(plan) {
   currentReminderId = plan.id;
   document.getElementById('reminderName').textContent = plan.name;
   document.getElementById('reminderDose').textContent = (plan.dose || '请按医嘱服用') + (plan.note ? '（' + plan.note + '）' : '');
   document.getElementById('reminderOverlay').classList.add('show');
   speak('该吃药了。' + plan.name + '，' + (plan.dose || ''));
-  playAlarm();       // 提示音
-  vibratePhone();    // 手机振动
-  // 系统通知：即使页面在后台，也能在桌面弹出提醒
-  if ('Notification' in window && Notification.permission === 'granted') {
+  playAlarm();
+  vibratePhone();
+  startTitleFlash();
+  // 页面在后台时，额外弹系统通知（SW 也会弹，这里是双重保障）
+  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
     try {
       new Notification('小药叮 - 该吃药啦', {
         body: plan.name + ' ' + (plan.dose || '') + (plan.note ? '（' + plan.note + '）' : ''),
-        tag: 'medication-' + plan.id
+        tag: 'medication-' + plan.id,
+        requireInteraction: true
       });
     } catch(e) {}
   }
@@ -947,10 +1090,12 @@ function confirmTaken() {
   }
   document.getElementById('reminderOverlay').classList.remove('show');
   currentReminderId = null;
+  stopTitleFlash();
   renderToday();
 }
 function snoozeReminder() {
   document.getElementById('reminderOverlay').classList.remove('show');
+  stopTitleFlash();
   if (currentReminderId) {
     const id = currentReminderId;
     setTimeout(() => {
@@ -966,7 +1111,7 @@ function snoozeReminder() {
   }
   currentReminderId = null;
 }
-scheduleNextCheck();  // 启动定时器（递归setTimeout，校准到整分钟）
+scheduleNextCheck();  // 启动页面内定时器
 // ============================================================
 //  提醒效果：提示音 + 振动 + 语音播报
 // ============================================================
@@ -1198,6 +1343,7 @@ async function parseVoiceCommand(text) {
 //  初始化
 // ============================================================
 renderToday();
+syncPlansToSW();  // 页面加载时同步计划到 Service Worker
 </script>
 </body>
 </html>

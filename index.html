@@ -833,29 +833,52 @@ async function checkInteraction() {
     // 把识别出的药品名称填回输入框
     document.getElementById('interactionInput').value = drugs;
 
-    // ===== 正常展示分析结果 =====
+    // 按风险从高到低排序
+    const sortedConflicts = (result.conflicts || []).slice().sort((a, b) => {
+      const order = { '高': 0, '中': 1, '低': 2 };
+      return (order[a.risk] || 3) - (order[b.risk] || 3);
+    });
+
+    // ===== 正常展示分析结果（卡片式） =====
     let html = '<div class="result-card">';
-    html += '<div class="result-row" style="border-bottom:2px solid #f0f0f0; padding-bottom:10px;"><span class="result-label">分析药品：</span><strong>' + drugs + '</strong></div>';
-    if (result.hasConflict && result.conflicts && result.conflicts.length > 0) {
-      html += '<h3 style="color:#ff4d4f; margin-top:12px;">⚠️ 发现联用禁忌</h3>';
-      for (const c of result.conflicts) {
-        const riskColor = c.risk === '高' ? '#ff4d4f' : (c.risk === '中' ? '#fa8c16' : '#faad14');
-        html += '<div class="warn-box" style="margin-top:10px; border-left-color:' + riskColor + ';">';
-        html += '<strong>' + c.pair + '</strong>（风险：' + c.risk + '）<br>' + c.description;
+    // 药品确认行（大字醒目）
+    html += '<div style="background:#f5f5f5; border-radius:10px; padding:14px 16px; margin-bottom:14px;">';
+    html += '<div style="font-size:17px; color:#999; margin-bottom:4px;">分析药品</div>';
+    html += '<div style="font-size:23px; font-weight:700; color:#333; line-height:1.4;">' + drugs + '</div>';
+    html += '</div>';
+
+    if (result.hasConflict && sortedConflicts.length > 0) {
+      html += '<div style="font-size:22px; font-weight:700; color:#ff4d4f; margin-bottom:12px;">⚠️ 发现联用禁忌</div>';
+      for (const c of sortedConflicts) {
+        const riskBg = c.risk === '高' ? '#ff4d4f' : (c.risk === '中' ? '#fa8c16' : '#faad14');
+        html += '<div style="border:2px solid ' + riskBg + '; border-radius:12px; padding:14px 16px; margin-bottom:12px; background:#fff;">';
+        html += '<div style="display:flex; align-items:center; margin-bottom:8px;">';
+        html += '<span style="font-size:20px; font-weight:700; color:#333; flex:1;">' + c.pair + '</span>';
+        html += '<span style="background:' + riskBg + '; color:#fff; font-size:16px; font-weight:700; padding:4px 14px; border-radius:20px; flex-shrink:0;">' + c.risk + '风险</span>';
+        html += '</div>';
+        html += '<div style="font-size:19px; color:#555; line-height:1.6;">' + c.description + '</div>';
         html += '</div>';
       }
     } else {
-      html += '<h3 style="color:#52C41A; margin-top:12px;">✅ 未发现明显联用禁忌</h3>';
-      html += '<div class="result-row"><strong>' + drugs + '</strong> 之间没有已知的严重相互作用，但仍建议遵医嘱服用。</div>';
+      html += '<div style="background:#f6ffed; border:2px solid #52C41A; border-radius:12px; padding:18px; text-align:center; margin-bottom:12px;">';
+      html += '<div style="font-size:23px; font-weight:700; color:#52C41A;">✅ 未发现明显联用禁忌</div>';
+      html += '<div style="font-size:18px; color:#666; margin-top:8px;">' + drugs + ' 之间没有已知的严重相互作用</div>';
+      html += '</div>';
     }
+
     if (result.warnings) {
-      html += '<div class="warn-box" style="margin-top:12px; background:#f0f5ff; border-left-color:#1890ff;"><strong>注意事项：</strong><br>' + result.warnings + '</div>';
+      html += '<div style="background:#f0f5ff; border-left:5px solid #1890ff; border-radius:8px; padding:14px 16px; margin-top:12px;">';
+      html += '<strong style="color:#1890ff; font-size:19px;">注意事项</strong><br><span style="font-size:19px; color:#333; line-height:1.6;">' + result.warnings + '</span>';
+      html += '</div>';
     }
     if (result.suggestion) {
-      html += '<div class="result-row"><span class="result-label">建议：</span>' + result.suggestion + '</div>';
+      html += '<div style="background:#fffbe6; border-left:5px solid #faad14; border-radius:8px; padding:14px 16px; margin-top:12px;">';
+      html += '<strong style="color:#d48806; font-size:19px;">建议</strong><br><span style="font-size:19px; color:#333; line-height:1.6;">' + result.suggestion + '</span>';
+      html += '</div>';
     }
-    html += '<div style="text-align:center; margin-top:14px;">';
-    html += '<button class="btn btn-secondary" onclick="speakInteractionResult()">🔊 重新播报</button>';
+
+    html += '<div style="text-align:center; margin-top:18px;">';
+    html += '<button class="btn btn-secondary" style="font-size:20px; padding:16px 36px;" onclick="speakInteractionResult()">🔊 重新播报</button>';
     html += '</div>';
     html += '</div>';
     resultDiv.innerHTML = html;
@@ -874,15 +897,20 @@ function speakInteractionResult() {
   if (!lastInteractionResult) return;
   const r = lastInteractionResult;
   const drugs = (r.extractedDrugs || '').trim();
+  // 按风险从高到低排序
+  const sortedConflicts = (r.conflicts || []).slice().sort((a, b) => {
+    const order = { '高': 0, '中': 1, '低': 2 };
+    return (order[a.risk] || 3) - (order[b.risk] || 3);
+  });
   let text = '联用禁忌分析完成。分析药品：' + drugs + '。';
-  if (r.hasConflict && r.conflicts && r.conflicts.length > 0) {
-    text += '发现' + r.conflicts.length + '处联用禁忌。';
-    for (let i = 0; i < Math.min(r.conflicts.length, 2); i++) {
-      const c = r.conflicts[i];
-      text += c.pair + '，风险' + c.risk + '。' + c.description + '。';
+  if (r.hasConflict && sortedConflicts.length > 0) {
+    text += '发现' + sortedConflicts.length + '处联用禁忌，按风险从高到低播报。';
+    for (let i = 0; i < Math.min(sortedConflicts.length, 2); i++) {
+      const c = sortedConflicts[i];
+      text += c.pair + '，' + c.risk + '风险。' + c.description + '。';
     }
-    if (r.conflicts.length > 2) {
-      text += '其余禁忌请查看屏幕。';
+    if (sortedConflicts.length > 2) {
+      text += '其余' + (sortedConflicts.length - 2) + '处禁忌请查看屏幕。';
     }
   } else {
     text += '这几种药之间没有发现明显的联用禁忌，但仍建议遵医嘱服用。';
@@ -924,6 +952,10 @@ function startInteractionVoice() {
     btn.classList.add('recording');
     btn.innerHTML = '正在<br>听...';
     resultEl.textContent = '请说话...';
+    // 开始新的语音输入时，清空输入框旧内容和上次分析结果
+    document.getElementById('interactionInput').value = '';
+    document.getElementById('interactionResult').innerHTML = '';
+    lastInteractionVoiceText = '';
   };
   interactionRecognition.onresult = function(event) {
     let text = '';
@@ -932,6 +964,8 @@ function startInteractionVoice() {
     if (text) {
       resultEl.textContent = '您说：' + text;
       lastInteractionVoiceText = text;
+      // 实时把语音识别内容填入输入框，替换旧内容
+      document.getElementById('interactionInput').value = text;
     }
   };
   interactionRecognition.onerror = function(event) {

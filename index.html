@@ -557,12 +557,20 @@ function savePlan() {
   if (!name) { alert('请填写药品名称'); return; }
   if (!time) { alert('请选择服用时间'); return; }
   const plans = loadPlans();
-  plans.push({
+  const now = new Date();
+  const parts = time.split(':');
+  const planTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(parts[0]), parseInt(parts[1]), 0, 0);
+  const newPlan = {
     id: Date.now(),
     name, dose, time, note,
     takenDates: [],
     createdAt: new Date().toISOString()
-  });
+  };
+  // 如果设置的时间已过今天当前时间，标记今天已提醒，从明天开始生效
+  if (planTime <= now) {
+    newPlan.lastReminded = now.toDateString();
+  }
+  plans.push(newPlan);
   savePlans(plans);
   document.getElementById('medName').value = '';
   document.getElementById('medDose').value = '';

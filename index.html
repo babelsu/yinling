@@ -448,16 +448,10 @@ function handleScan(event) {
 
 // 模型返回的JSON可能带markdown或多余文字，做容错
 function parseJSONSafe(content) {
-  let result;
-  try { result = JSON.parse(content); } catch (e) {
-    const m = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (m) { try { result = JSON.parse(m[1]); } catch(e2) {} }
-    if (!result) {
-      const f = content.indexOf('{'), l = content.lastIndexOf('}');
-      if (f !== -1 && l !== -1) { try { result = JSON.parse(content.substring(f, l + 1)); } catch(e3) {} }
-    }
-  }
-  return result;
+  try { return JSON.parse(content); } catch(e) {}
+  const m = content.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch(e) {} }
+  return null;
 }
 
 function formatField(text) {
@@ -468,10 +462,9 @@ function formatField(text) {
   return text;
 }
 
-// 调视觉大模型，识别药名+补全用药信息
 async function recognizeMedication(imageData, resultDiv) {
   resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在识别药品并整理用药说明，请稍候...</div>';
-  const prompt = '你是一个专业的药品识别与用药指导助手。请仔细识别这张药品照片（可能是药盒正面、侧面或说明书），完成以下两步：\n第一步：从图片中准确识别药品通用名、商品名和规格。\n第二步：基于识别出的药品名称，结合你的医学知识，补充完整的用药信息。\n\n请以严格的JSON格式返回以下字段：\n{\n  "name": "药品通用名（如：阿司匹林肠溶片）",\n  "brand": "商品名（如：拜阿司匹灵，没有则填空字符串）",\n  "dose": "规格剂量（如：100mg×30片）",\n  "indication": "适应症/功能主治（用于治疗什么病，简洁明了）",\n  "usage": "用法用量（成人常规剂量，如：口服，每天1次，每次1片）",\n  "timing": "服用时间建议（如：饭后服用、睡前服用、空腹服用）",\n  "adverse": "常见不良反应（2-3条，通俗易懂）",\n  "contraindication": "禁忌人群（哪些人不能吃，如：孕妇、胃溃疡患者等）",\n  "caution": "注意事项（3-4条，适合老年人阅读，避免专业术语）",\n  "interaction": "药物相互作用或联用禁忌（没有则写"无特殊联用提醒"）"\n}\n要求：\n1. 只返回JSON，不要任何其他文字、解释或markdown代码块标记\n2. name字段必须准确识别；如果图片完全无法识别为药品，name填"未能识别出药品"，其他字段填空字符串\n3. 图片中能看到的信息优先从图片提取；图片中没有的信息，基于药品名称的通用医学常识补充\n4. 所有字段都尽量填写有价值的内容，不要留空字符串（brand除外）\n5. 所有内容用中文，语言通俗易懂，避免专业术语堆砌\n6. 用法用量给出成人常规剂量；注意事项和禁忌要特别关注老年人常见情况';
+  const prompt = '识别这张药品照片，告诉我药名和怎么吃。返回JSON，字段有name(通用名)、brand(商品名)、dose(规格)、indication(适应症)、usage(用法用量)、timing(什么时候吃)、adverse(不良反应)、contraindication(什么人不能吃)、caution(注意事项)、interaction(联用提醒)。只返回JSON别写别的。认不出来name就写"未能识别出药品"。图片上看不清的信息按这个药的常规说明补全就行，用大白话写。';
   try {
     const res = await fetch(AI_CONFIG.API_URL, {
       method: 'POST',
@@ -554,14 +547,13 @@ function speakResult() {
   speak(text);
 }
 
-// 提取药名→分析联用禁忌→按风险排序展示
 async function checkInteraction() {
   let input = document.getElementById('interactionInput').value.trim();
   const resultDiv = document.getElementById('interactionResult');
   if (!input && lastInteractionVoiceText) input = lastInteractionVoiceText.trim();
   if (!input) { alert('请输入药品名称或按住说话'); return; }
   resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在分析联用禁忌，请稍候...</div>';
-  const prompt = '用户输入可能是药品列表，也可能是自然语言提问（如：阿司匹林和布洛芬可以一起吃吗）。\n用户输入：' + input + '\n\n请先从用户输入中提取所有药品名称，然后分析这些药物之间的联用禁忌和相互作用。\n（注：药品名称可能用逗号、空格、顿号、和、与或连续书写分隔，请自行识别）\n\n请以严格JSON格式返回：\n{\n  "extractedDrugs": "提取出的所有药品名称，用逗号分隔",\n  "hasConflict": true或false,\n  "conflicts": [\n    {"pair": "药A+药B", "risk": "高/中/低", "description": "冲突原因和后果"}\n  ],\n  "warnings": "通用注意事项",\n  "suggestion": "给用户的建议"\n}\n\n要求：\n1. 只返回JSON，不要其他文字\n2. 基于医学常识，客观准确\n3. 语言通俗易懂，适合老年人\n4. 没有冲突时hasConflict为false，conflicts为空数组\n5. warnings和suggestion字段中必须明确提到具体的药品名称，不要用「这些药物」「它们」等笼统表述\n6. 如果无法从用户输入中识别出任何药品名称，extractedDrugs填空字符串，hasConflict为false，conflicts为空数组，suggestion填"未能识别出药品名称，请重新输入药品名称"\n7. 如果只识别出一种药品，extractedDrugs填该药品名，hasConflict为false，conflicts为空数组，suggestion填"只识别到一种药品，联用禁忌分析需要至少两种药品，请补充其他药品名称"';
+  const prompt = '用户输入：' + input + '\n\n先把里面的药名提取出来，再看看这些药一起吃有没有冲突。返回JSON：extractedDrugs(药名逗号分隔)、hasConflict(true/false)、conflicts(数组，每项pair/risk(高中低)/description)、warnings、suggestion。只返回JSON。warnings和suggestion里要写具体药名别用"这些药"。认不出药名extractedDrugs就留空，只有一种药也说明一下。';
   try {
     const res = await fetch(AI_CONFIG.API_URL, {
       method: 'POST',
@@ -1008,11 +1000,9 @@ function startVoice() {
     isRecording = false;
     btn.classList.remove('recording');
     btn.innerHTML = '按住<br>说话';
-    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') resultEl.textContent = '麦克风权限被拒绝，请在浏览器设置中允许麦克风';
-    else if (event.error === 'no-speech') resultEl.textContent = '没有听到声音，请大声再说一次';
-    else if (event.error === 'network') resultEl.textContent = '网络异常，语音识别需要联网';
-    else if (event.error === 'aborted') return;
-    else resultEl.textContent = '识别出错，请重试';
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') resultEl.textContent = '麦克风没开，去浏览器设置里允许一下';
+    else if (event.error === 'no-speech') resultEl.textContent = '没听清，再说一次';
+    else resultEl.textContent = '识别失败，重试一下';
   };
   recognition.onend = function() {
     isRecording = false;
@@ -1027,11 +1017,10 @@ function stopVoice() {
   try { recognition.stop(); } catch (e) {}
 }
 
-// 语音转文字后，调大模型提取药品/剂量/时间
 async function parseVoiceCommand(text) {
   const resultEl = document.getElementById('voiceResult');
   resultEl.textContent = '您说：' + text + '（正在解析...）';
-  const prompt = '请从以下语音指令中提取用药提醒信息，以严格JSON格式返回：\n{\n  "name": "药品名称",\n  "dose": "服用剂量（如1片、10毫升、5mg）",\n  "time": "服用时间，24小时制HH:MM格式（如08:00、19:30）",\n  "note": "服用说明（如饭后服用、饭前服用、空腹服用、睡前服用），没有则为空字符串"\n}\n\n语音指令：' + text + '\n\n要求：\n1. 只返回JSON，不要任何其他文字、解释或markdown代码块\n2. 时间统一转成24小时制HH:MM格式："早上八点"→"08:00"，"晚上七点半"→"19:30"，"下午三点十五"→"15:15"\n3. 所有字段用中文\n4. 提取不到的字段填空字符串';
+  const prompt = '从这句话里提取用药提醒：' + text + '\n返回JSON：name(药名)、dose(剂量)、time(HH:MM格式，早上8点就是08:00)、note(饭前饭后这类)。只返回JSON，提取不到的留空。';
   try {
     const res = await fetch(AI_CONFIG.API_URL, {
       method: 'POST',

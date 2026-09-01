@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>银龄药伴</title>
+<title>小药叮</title>
 <style>
   /* ===== 全局适老化基础 ===== */
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -361,7 +361,7 @@
 <!-- ============ 首页 ============ -->
 <div id="page-home" class="page active">
   <div class="header">
-    <h1>银龄药伴</h1>
+    <h1>小药叮</h1>
     <p>您的贴心用药助手</p>
   </div>
   <div class="today-card">
@@ -470,13 +470,14 @@
 </div>
 <script>
 // ============================================================
-//  大模型配置（智谱AI - 视觉+文本双模型）
+//  大模型配置（阿里云百炼 - 通义千问）
 // ============================================================
 const AI_CONFIG = {
-  API_KEY: 'fa50168170174c708c0ee1f810abd65d.KLKJq9Tp33HYVemv',
-  VISION_MODEL: 'glm-4.6v-flash',     // 视觉模型：识别药盒图片
-  TEXT_MODEL: 'glm-4.7-flash',          // 文本模型：药品信息补全 + 语音指令解析
-  API_URL: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+  API_KEY: 'sk-ws-H.EXXRDPP.dWRc.MEMCIGAvANAxWfwnXowXv1uwOkZgtGlC9eC_dPGoK51aovetAh8BYkTD_69itTiAc3RaxRDLNkB1DgNubzaeiEPzLwxH',
+  VISION_MODEL: 'qwen-vl-plus',        // 视觉增强版：拍照识药，准又省
+  TEXT_MODEL: 'qwen-turbo',             // 稳定便宜：联用禁忌分析
+  VOICE_MODEL: 'qwen-turbo',            // 语音指令解析
+  API_URL: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
 };
 // ============================================================
 //  数据层：本地存储
@@ -581,7 +582,7 @@ function deletePlan(id) {
   renderToday();
 }
 // ============================================================
-//  拍药识药（两阶段：视觉模型识别药名 + 文本模型补全药品信息）
+//  拍药识药（qwen-vl-plus 视觉增强版：识别药盒 + 基于药名补全用药信息）
 // ============================================================
 function handleScan(event) {
   const file = event.target.files[0];
@@ -617,76 +618,42 @@ function parseJSONSafe(content) {
   return result;
 }
 
-// 第一阶段：视觉模型识别药盒，提取药品名称和规格
-async function recognizeByVision(imageData) {
-  const prompt = '请识别这张药品照片，提取以下内容并以严格JSON格式返回：\n{\n  "name": "药品通用名（如：阿司匹林肠溶片）",\n  "dose": "图片上可见的规格剂量（如：100mg），看不清则填空字符串"\n}\n要求：\n1. 只返回JSON，不要其他文字\n2. name字段必须填写，尽可能准确识别药品名称\n3. dose只填图片上明确可见的规格，看不清就留空\n4. 如果照片完全不是药品或无法识别，name填"未能识别出药品"';
-  const res = await fetch(AI_CONFIG.API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + AI_CONFIG.API_KEY },
-    body: JSON.stringify({
-      model: AI_CONFIG.VISION_MODEL,
-      messages: [{ role: 'user', content: [
-        { type: 'image_url', image_url: { url: imageData } },
-        { type: 'text', text: prompt }
-      ]}],
-      max_tokens: 500,
-      temperature: 0.1
-    })
-  });
-  if (!res.ok) throw new Error('视觉识别错误 ' + res.status);
-  const data = await res.json();
-  return parseJSONSafe(data.choices[0].message.content);
-}
-
-// 第二阶段：文本模型基于药品名称补全完整用药信息
-async function enrichMedInfo(name, visionDose) {
-  const prompt = '请根据药品名称"' + name + '"，提供以下用药信息，以严格JSON格式返回：\n{\n  "usage": "用法用量（成人常规剂量，如：口服，每天1次，每次1片）",\n  "timing": "服用时间建议（如：饭后服用、睡前服用）",\n  "caution": "注意事项和常见不良反应（至少3条，通俗易懂，适合老年人）",\n  "interaction": "常见药物相互作用或联用禁忌（没有则写"无特殊联用提醒"）"\n}\n要求：\n1. 只返回JSON，不要其他文字\n2. 基于医学常识，客观准确\n3. 语言通俗易懂，避免专业术语堆砌\n4. 所有字段必须填写有价值的内容，不要留空';
-  const res = await fetch(AI_CONFIG.API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + AI_CONFIG.API_KEY },
-    body: JSON.stringify({
-      model: AI_CONFIG.TEXT_MODEL,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1200,
-      temperature: 0.3
-    })
-  });
-  if (!res.ok) throw new Error('信息补全错误 ' + res.status);
-  const data = await res.json();
-  return parseJSONSafe(data.choices[0].message.content);
-}
-
-// 主流程：两阶段识别
+// 主识别流程：单次调用视觉模型，识别药名并补全用药信息
 async function recognizeMedication(imageData, resultDiv) {
+  resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>正在识别药品并整理用药说明，请稍候...</div>';
+  const prompt = '你是一个专业的药品识别与用药指导助手。请仔细识别这张药品照片（可能是药盒正面、侧面或说明书），完成以下两步：\n第一步：从图片中准确识别药品通用名、商品名和规格。\n第二步：基于识别出的药品名称，结合你的医学知识，补充完整的用药信息。\n\n请以严格的JSON格式返回以下字段：\n{\n  "name": "药品通用名（如：阿司匹林肠溶片）",\n  "brand": "商品名（如：拜阿司匹灵，没有则填空字符串）",\n  "dose": "规格剂量（如：100mg×30片）",\n  "indication": "适应症/功能主治（用于治疗什么病，简洁明了）",\n  "usage": "用法用量（成人常规剂量，如：口服，每天1次，每次1片）",\n  "timing": "服用时间建议（如：饭后服用、睡前服用、空腹服用）",\n  "adverse": "常见不良反应（2-3条，通俗易懂）",\n  "contraindication": "禁忌人群（哪些人不能吃，如：孕妇、胃溃疡患者等）",\n  "caution": "注意事项（3-4条，适合老年人阅读，避免专业术语）",\n  "interaction": "药物相互作用或联用禁忌（没有则写"无特殊联用提醒"）"\n}\n要求：\n1. 只返回JSON，不要任何其他文字、解释或markdown代码块标记\n2. name字段必须准确识别；如果图片完全无法识别为药品，name填"未能识别出药品"，其他字段填空字符串\n3. 图片中能看到的信息优先从图片提取；图片中没有的信息，基于药品名称的通用医学常识补充\n4. 所有字段都尽量填写有价值的内容，不要留空字符串（brand除外）\n5. 所有内容用中文，语言通俗易懂，避免专业术语堆砌\n6. 用法用量给出成人常规剂量；注意事项和禁忌要特别关注老年人常见情况';
+
   try {
-    // 第一阶段：视觉识别
-    resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>第一步：识别药品名称...</div>';
-    const visionResult = await recognizeByVision(imageData);
-    if (!visionResult || !visionResult.name || visionResult.name.indexOf('未能识别') !== -1) {
+    const res = await fetch(AI_CONFIG.API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + AI_CONFIG.API_KEY },
+      body: JSON.stringify({
+        model: AI_CONFIG.VISION_MODEL,
+        messages: [{ role: 'user', content: [
+          { type: 'image_url', image_url: { url: imageData } },
+          { type: 'text', text: prompt }
+        ]}],
+        max_tokens: 3000,
+        temperature: 0.3
+      })
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error('API错误 ' + res.status + '：' + errText.substring(0, 300));
+    }
+    const data = await res.json();
+    const content = data.choices[0].message.content;
+    const result = parseJSONSafe(content);
+    if (!result || !result.name) {
+      resultDiv.innerHTML = '<div class="warn-box">识别结果解析失败。<br><br>模型返回内容：' + content.substring(0, 200) + '</div>';
+      return;
+    }
+    if (result.name.indexOf('未能识别') !== -1) {
       resultDiv.innerHTML = '<div class="result-card"><div class="warn-box">未能识别出药品信息。<br><br>请确保照片清晰、药盒文字完整可见，然后重新拍摄。</div></div>';
       speak('未能识别出药品，请重新拍摄');
       return;
     }
-
-    // 第二阶段：文本补全
-    resultDiv.innerHTML = '<div class="loading"><span class="spin"></span>已识别：' + visionResult.name + '<br>正在整理用药说明...</div>';
-    let enriched = null;
-    try {
-      enriched = await enrichMedInfo(visionResult.name, visionResult.dose);
-    } catch (e) {
-      console.warn('文本补全失败，仅显示视觉识别结果:', e);
-    }
-
-    // 合并结果：视觉识别的name和dose为准，其他用文本模型补全（标注常识参考）
-    const finalResult = {
-      name: visionResult.name,
-      dose: visionResult.dose || (enriched && enriched.dose ? '[常识参考]' + enriched.dose : ''),
-      usage: enriched && enriched.usage ? '[常识参考]' + enriched.usage : '',
-      timing: enriched && enriched.timing ? '[常识参考]' + enriched.timing : '',
-      caution: enriched && enriched.caution ? '[常识参考]' + enriched.caution : '',
-      interaction: enriched && enriched.interaction ? '[常识参考]' + enriched.interaction : ''
-    };
-    showRecognizeResult(finalResult);
+    showRecognizeResult(result);
   } catch (err) {
     resultDiv.innerHTML = '<div class="warn-box">识别失败：' + err.message + '<br><br>请检查网络是否正常，或稍后再试。</div>';
     speak('识别失败，请稍后再试');
@@ -704,31 +671,66 @@ function showRecognizeResult(med) {
   const name = med.name || '未能识别出药品';
   const isFailed = name.indexOf('未能识别') !== -1 || name.indexOf('未识别') !== -1;
   let html = '<div class="result-card">';
-  html += '<h3>' + name + '</h3>';
+  // 标题：药品名 + 商品名
+  html += '<h3>' + name;
+  if (med.brand) html += ' <span style="font-size:18px; color:#888; font-weight:400;">（' + med.brand + '）</span>';
+  html += '</h3>';
+
   if (!isFailed) {
-    if (med.dose) html += '<div class="result-row"><span class="result-label">规格：</span>' + formatField(med.dose) + '</div>';
-    if (med.usage) html += '<div class="result-row"><span class="result-label">怎么吃：</span>' + formatField(med.usage) + '</div>';
+    // ===== 基本信息 =====
+    html += '<div style="background:#f9f9f9; border-radius:10px; padding:14px 16px; margin:10px 0;">';
+    if (med.dose) html += '<div class="result-row" style="border-bottom:1px solid #eee;"><span class="result-label">规格：</span>' + formatField(med.dose) + '</div>';
+    if (med.indication) html += '<div class="result-row"><span class="result-label">适应症：</span>' + formatField(med.indication) + '</div>';
+    html += '</div>';
+
+    // ===== 用法用量 =====
+    html += '<div style="background:#f6ffed; border-radius:10px; padding:14px 16px; margin:10px 0;">';
+    if (med.usage) html += '<div class="result-row" style="border-bottom:1px solid #eee;"><span class="result-label">怎么吃：</span>' + formatField(med.usage) + '</div>';
     if (med.timing) html += '<div class="result-row"><span class="result-label">什么时候吃：</span>' + formatField(med.timing) + '</div>';
+    html += '</div>';
+
+    // ===== 安全提醒 =====
+    if (med.contraindication) {
+      html += '<div class="warn-box" style="background:#fff1f0; border-left-color:#ff4d4f;"><strong>⚠️ 禁忌人群：</strong><br>' + formatField(med.contraindication) + '</div>';
+    }
+    if (med.adverse) {
+      html += '<div class="warn-box" style="background:#fffbe6; border-left-color:#faad14;"><strong>常见不良反应：</strong><br>' + formatField(med.adverse) + '</div>';
+    }
     if (med.caution) {
       html += '<div class="warn-box"><strong>注意事项：</strong><br>' + formatField(med.caution) + '</div>';
     }
     if (med.interaction && med.interaction.indexOf('无特殊') === -1) {
       html += '<div class="warn-box" style="margin-top:10px; background:#f0f5ff; border-left-color:#1890ff;"><strong>联用提醒：</strong><br>' + formatField(med.interaction) + '</div>';
     }
-    html += '<div style="text-align:center; margin-top:16px;">';
+
+    // ===== 操作按钮 =====
+    html += '<div style="text-align:center; margin-top:18px;">';
+    html += '<button class="btn btn-secondary" onclick="speakResult()" style="margin-right:8px;">🔊 重新播报</button>';
     html += '<button class="btn btn-primary" onclick="quickAddPlanFromResult()">一键设为提醒</button>';
     html += '</div>';
-    html += '<p style="text-align:center; color:#aaa; font-size:15px; margin-top:12px;">标注"常识参考"的内容为通用医学知识，具体请以药品说明书或医嘱为准</p>';
+    html += '<p style="text-align:center; color:#aaa; font-size:15px; margin-top:12px;">以上信息仅供参考，具体请以药品说明书或医嘱为准</p>';
   } else {
     html += '<div class="warn-box">未能识别出药品信息。<br><br>请确保照片清晰、药盒文字完整可见，然后重新拍摄。</div>';
   }
   html += '</div>';
   resultDiv.innerHTML = html;
   if (!isFailed) {
-    speak('识别完成。' + name + '。' + (med.usage || '') + '。' + (med.caution || ''));
+    speakResult();
   } else {
     speak('未能识别出药品，请重新拍摄');
   }
+}
+
+// 语音播报识别结果（简洁版，重点突出）
+function speakResult() {
+  if (!lastRecognizedMed) return;
+  const med = lastRecognizedMed;
+  let text = '识别完成。' + med.name;
+  if (med.indication) text += '，用于' + med.indication;
+  if (med.usage) text += '。用法用量：' + med.usage;
+  if (med.timing) text += '，建议' + med.timing;
+  if (med.contraindication) text += '。注意：' + med.contraindication + '禁用';
+  speak(text);
 }
 function quickAddPlanFromResult() {
   if (!lastRecognizedMed) return;
@@ -932,7 +934,7 @@ function showReminder(plan) {
   // 系统通知：即使页面在后台，也能在桌面弹出提醒
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      new Notification('银龄药伴 - 该吃药啦', {
+      new Notification('小药叮 - 该吃药啦', {
         body: plan.name + ' ' + (plan.dose || '') + (plan.note ? '（' + plan.note + '）' : ''),
         tag: 'medication-' + plan.id
       });
@@ -1151,7 +1153,7 @@ async function parseVoiceByLLM(text) {
       'Authorization': 'Bearer ' + AI_CONFIG.API_KEY
     },
     body: JSON.stringify({
-      model: AI_CONFIG.TEXT_MODEL,
+      model: AI_CONFIG.VOICE_MODEL,
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 300,
       temperature: 0.1

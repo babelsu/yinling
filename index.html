@@ -406,7 +406,6 @@ function savePlan() {
   document.getElementById('medName').value = '';
   document.getElementById('medDose').value = '';
   document.getElementById('medNote').value = '';
-  speak('提醒已设置，' + name + '，' + time + '服用');
   alert('保存成功！');
   showPage('home');
 }
@@ -1018,13 +1017,16 @@ function startVoice() {
 }
 function stopVoice() {
   if (!isRecording || !recognition) return;
-  try { recognition.stop(); } catch (e) {}
+  // 延迟300ms再停止，让识别器返回最后的结果（避免剂量等尾部文字丢失）
+  setTimeout(function() {
+    try { recognition.stop(); } catch (e) {}
+  }, 300);
 }
 
 async function parseVoiceCommand(text) {
   const resultEl = document.getElementById('voiceResult');
   resultEl.textContent = '您说：' + text + '（正在解析...）';
-  const prompt = '从这句话里提取用药提醒：' + text + '\n返回JSON：name(药名)、dose(剂量)、time(HH:MM格式，早上8点就是08:00)、note(饭前饭后这类)。只返回JSON，提取不到的留空。';
+  const prompt = '从这句话里提取用药提醒：' + text + '\n\n严格返回JSON，字段如下：\n- name: 药品名称（必须提取）\n- dose: 剂量/数量，如"1片"、"2粒"、"10mg"、"一片"、"两片"（用户说了数量或剂量就必须提取，不要留空）\n- time: 服用时间，HH:MM格式（早上8点=08:00，中午12点=12:00，下午2点=14:00，晚上8点=20:00）\n- note: 备注，如"饭前"、"饭后"、"睡前"、"随餐"（没有就留空）\n\n只返回JSON，不要其他文字。';
   try {
     const res = await fetch(AI_CONFIG.API_URL, {
       method: 'POST',
